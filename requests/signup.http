@@ -1,0 +1,89 @@
+# requests/signup.http
+#
+# WHAT THIS IS
+# Test requests for our sign-up API. Needs the "REST Client" extension.
+# Click "Send Request" above any request to send it; the reply opens on the right.
+# Run them top to bottom the first time (test 4 uses the code from test 1).
+#
+# To start fresh, run this in pgAdmin's Query Tool on the streamerdraft database:
+#   DELETE FROM signups WHERE email LIKE '%@example.com';
+
+@base = http://localhost:3000
+
+### 1. A valid prospect → expect 201 + a referralCode
+# @name prospect
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "  BassyMike@Example.com ",
+  "displayName": "bassymike",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/bassymike",
+  "streamCategory": "GTA RP",
+  "ageConfirmed": true,
+  "marketingOptIn": true
+}
+
+### 2. Same email, different capitals → expect 409 "already on the list"
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "bassymike@EXAMPLE.com",
+  "displayName": "someone else",
+  "platform": "kick",
+  "channelUrl": "kick.com/someone",
+  "ageConfirmed": true
+}
+
+### 3. Broken prospect → expect 400 with a message for every bad field
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "not-an-email",
+  "displayName": "b",
+  "platform": "myspace",
+  "channelUrl": "hello",
+  "ageConfirmed": false
+}
+
+### 4. A valid scout who came through test 1's recruit link → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "creator@example.com",
+  "displayName": "Big Creator",
+  "platformUrls": ["tiktok.com/@bigcreator", "youtube.com/@bigcreator"],
+  "audienceSize": "50k_100k",
+  "contentTypes": ["short_form", "streaming"],
+  "ageConfirmed": true,
+  "ref": "{{prospect.response.body.$.referralCode}}"
+}
+
+### 5. Broken scout → expect 400 (no links, no audience size, no content types)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "scout2@example.com",
+  "displayName": "Scout Two",
+  "platformUrls": [],
+  "ageConfirmed": true
+}
+
+### 6. Trying to be both → expect 400 "Choose prospect or scout."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "both",
+  "email": "both@example.com"
+}

@@ -37,3 +37,21 @@ export const db =
 if (process.env.NODE_ENV !== "production") {
   globalForDb.pgPool = db;
 }
+
+
+
+// ── Helper: was this error a "duplicate value" error? ─────────────
+// PostgreSQL uses error code 23505 when a UNIQUE rule is broken
+// (e.g. the same email twice). `constraintName` tells us WHICH rule.
+export function isUniqueViolation(error: unknown, constraintName: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505" &&
+    "constraint" in error &&
+    error.constraint === constraintName
+  );
+}
+
+
