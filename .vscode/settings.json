@@ -1,0 +1,9 @@
+{
+  // Tab labels: show the folder name next to Next.js files that share a name.
+  // Example: src/app/api/health/route.ts shows as "api/health - route.ts"
+  "workbench.editor.customLabels.patterns": {
+    "**/app/**/route.ts": "${dirname(1)}/${dirname} - route.ts",
+    "**/app/**/page.tsx": "${dirname(1)}/${dirname} - page.tsx",
+    "**/app/**/layout.tsx": "${dirname(1)}/${dirname} - layout.tsx"
+  }
+}
