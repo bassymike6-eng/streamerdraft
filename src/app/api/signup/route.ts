@@ -9,13 +9,19 @@
 // 2. Checks every field with our Zod rules (src/lib/validation.ts)
 // 3. Finds who recruited them, if they came through a recruit link
 // 4. Saves them in the database with a fresh random recruit code
-// 5. Replies with a clear success or error message
+// 5. Emails them their confirm link (src/lib/confirmation.ts)
+// 6. Replies with a clear success or error message
+//
+// If the email is already on the list:
+// - confirmed → "This email is already on the list."
+// - not confirmed yet → we send them a fresh confirm link
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db, isUniqueViolation } from "@/lib/db";
 import { signupSchema } from "@/lib/validation";
 import { makeReferralCode } from "@/lib/referral";
+import { issueConfirmation } from "@/lib/confirmation";
 
 // POST = "here is some data for you" (GET was "give me something")
 export async function POST(request: Request) {
@@ -80,7 +86,7 @@ export async function POST(request: Request) {
              age_confirmed, marketing_opt_in,
              referral_code, referred_by_id
            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-           RETURNING id, role, referral_code`,
+           RETURNING id, role, email, display_name, referral_code`,
           [
             data.role, //                                         $1
             data.email, //                                        $2
@@ -100,18 +106,24 @@ export async function POST(request: Request) {
 
         const saved = inserted.rows[0];
 
-        // ── 5. Success ──────────────────────────────────────────
+        // ── 5. Send the confirmation email ──────────────────────
+        await issueConfirmation({
+          id: saved.id,
+          email: saved.email,
+          displayName: saved.display_name,
+          role: saved.role,
+          referralCode: saved.referral_code,
+        });
+
+        // ── 6. Success ──────────────────────────────────────────
         return NextResponse.json(
-          { ok: true, role: saved.role, referralCode: saved.referral_code },
+          { ok: true, status: "created", role: saved.role, referralCode: saved.referral_code },
           { status: 201 } // 201 = "created"
         );
       } catch (error) {
-        // Same email already signed up (any capitals): friendly message.
+        // Same email already signed up (any capitals): handled below.
         if (isUniqueViolation(error, "signups_email_unique")) {
-          return NextResponse.json(
-            { ok: false, error: "This email is already on the list." },
-            { status: 409 } // 409 = "conflict"
-          );
+          return handleExistingEmail(data.email);
         }
         // Recruit code clash: loop round and try a new code.
         if (isUniqueViolation(error, "signups_referral_code_unique")) {
@@ -133,4 +145,36 @@ export async function POST(request: Request) {
       { status: 500 } // 500 = "our fault, not yours"
     );
   }
+}
+
+// ── Someone signed up with an email that's already on the list ─────
+// - Already confirmed → tell them they're already in.
+// - Not confirmed yet → their first email probably got lost, so send a
+//   fresh link (this also replaces the old link).
+async function handleExistingEmail(email: string) {
+  const existing = await db.query(
+    "SELECT id, email, display_name, role, referral_code, confirmed_at FROM signups WHERE lower(email) = $1",
+    [email] // already lowercase: our Zod rule did that
+  );
+  const person = existing.rows[0];
+
+  if (person.confirmed_at) {
+    return NextResponse.json(
+      { ok: false, status: "already_confirmed", error: "This email is already on the list." },
+      { status: 409 } // 409 = "conflict"
+    );
+  }
+
+  await issueConfirmation({
+    id: person.id,
+    email: person.email,
+    displayName: person.display_name,
+    role: person.role,
+    referralCode: person.referral_code,
+  });
+
+  return NextResponse.json(
+    { ok: true, status: "resent", message: "You're already signed up. We've sent you a fresh confirmation link." },
+    { status: 200 } // 200 = "OK"
+  );
 }

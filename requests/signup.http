@@ -26,7 +26,8 @@ Content-Type: application/json
   "marketingOptIn": true
 }
 
-### 2. Same email, different capitals → expect 409 "already on the list"
+### 2. Same email, different capitals → expect 200 "resent" (a fresh link is emailed)
+# If that email is already confirmed, you get 409 "already on the list" instead.
 POST {{base}}/api/signup
 Content-Type: application/json
 

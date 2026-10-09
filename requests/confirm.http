@@ -1,0 +1,157 @@
+# requests/confirm.http
+#
+# WHAT THIS IS
+# Tests for the whole email confirmation flow (B3).
+# Needs the "REST Client" extension + `npm run dev` running.
+#
+# HOW TO USE
+# Some tests need a token. Tokens are printed in the terminal running
+# `npm run dev`, inside the EMAIL box, after "confirm?token=".
+# Copy everything after "token=" and paste it into the matching
+# variable below, then SAVE this file before sending the next test.
+
+@base = http://localhost:3000
+
+# Paste tokens here as you go (no quotes, no spaces)
+@prospectToken = lQByIN91BsqIxoUi485X5EkRDCVZh5nWIgpDsma6qug
+@scoutOldToken = WSjncZBfY7FkYsAWfiHehdzKX1mpMTWOUOioNWM60kY
+@scoutNewToken = 652tqos19WnYjMgVxmOtR3YKc5GoG0rat62vbPoaQWQ
+@lateToken = LbM7xULIIvjNX-vwc_UQhlNfF09zxMu4RloRsGUVG2o
+@late2Token = rhsFtb2J5fdLas18FX2erP__f2C2Dza4RQpwmGttzek
+### 1. Sign up a prospect → 201. Then copy its token into @prospectToken
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "tester1@example.com",
+  "displayName": "tester1",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/tester1",
+  "ageConfirmed": true
+}
+
+### 2. Press Enter WITHOUT ticking the rules → 400 "rules_required"
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{prospectToken}}" }
+
+### 3. Press Enter WITH the rules ticked → 200 "confirmed", number 1
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{prospectToken}}", "rulesAccepted": true }
+
+### 4. Press Enter again → 200 "already_confirmed", same number
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{prospectToken}}", "rulesAccepted": true }
+
+### 5. Sign up again with the same email → 409 "already on the list"
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "TESTER1@example.com",
+  "displayName": "tester1",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/tester1",
+  "ageConfirmed": true
+}
+
+### 6. Sign up a scout → 201. Copy its token into @scoutOldToken
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "scout1@example.com",
+  "displayName": "Big Creator",
+  "platformUrls": ["tiktok.com/@bigcreator"],
+  "audienceSize": "50k_100k",
+  "contentTypes": ["streaming"],
+  "ageConfirmed": true
+}
+
+### 7. Scout signs up again before confirming → 200 "resent". Copy the NEW token into @scoutNewToken
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "scout1@example.com",
+  "displayName": "Big Creator",
+  "platformUrls": ["tiktok.com/@bigcreator"],
+  "audienceSize": "50k_100k",
+  "contentTypes": ["streaming"],
+  "ageConfirmed": true
+}
+
+### 8. Use the OLD scout link → 400 "invalid" (the new email replaced it)
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{scoutOldToken}}" }
+
+### 9. Use the NEW scout link (scouts don't need the rules tick) → 200 "confirmed", scout number 1
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{scoutNewToken}}" }
+
+### 10. A made-up token → 400 "invalid"
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "thisIsNotARealTokenAtAll123" }
+
+### 11. Sign up someone who'll let their link expire → 201. Copy the token into @lateToken,
+#     then run this in pgAdmin to fake 48 hours passing:
+#     UPDATE signups SET confirm_expires_at = NOW() - INTERVAL '1 hour' WHERE email = 'late@example.com';
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "late@example.com",
+  "displayName": "latey",
+  "platform": "kick",
+  "channelUrl": "kick.com/latey",
+  "ageConfirmed": true
+}
+
+### 12. Expired link → 410 "expired"
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{lateToken}}", "rulesAccepted": true }
+
+### Test 13: sign up a prospect we'll "age" with SQL
+# Expect: 201 created, and a confirm email printed in the terminal
+POST http://localhost:3000/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "late2@example.com",
+  "displayName": "latey2",
+  "ageConfirmed": true,
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/latey2",
+  "streamCategory": "GTA RP"
+}
+
+### Test 14: confirm with an expired link
+# Before sending, run this in pgAdmin (Query Tool on streamerdraft):
+#   UPDATE signups SET confirm_expires_at = NOW() - INTERVAL '1 hour' WHERE email = 'late2@example.com';
+# Expect: 410 "This link has expired..."
+POST http://localhost:3000/api/confirm
+Content-Type: application/json
+
+{
+  "token": "{{late2Token}}",
+  "rulesAccepted": true
+}
