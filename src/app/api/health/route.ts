@@ -1,26 +1,34 @@
 // src/app/api/health/route.ts
 //
 // WHAT THIS IS
-// A "route handler" = one back-end endpoint.
-// Next.js turns the folder path into a URL:
-//   src/app/api/health/route.ts  ->  http://localhost:3000/api/health
-//
-// WHY WE HAVE IT
-// A quick "is the server alive?" check. If anything breaks later,
-// open this URL first: if it fails, the server itself is down.
-// In chunk B1 it will also check the database connection.
+// Our "is everything alive?" check: http://localhost:3000/api/health
+// It now checks two things: the server is running AND the database answers.
+// If anything breaks later, open this URL first.
 
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db"; // "@/" is a shortcut for the src/ folder
 
-// The function's NAME decides which kind of request it answers.
-// GET = what the browser sends when you just open a URL.
-// Later we'll use POST for sending form data (the sign-up form).
 export async function GET() {
-  // NextResponse.json() sends data back as JSON,
-  // the format our front end will read.
-  return NextResponse.json({
-    ok: true,                       // the server is running
-    service: "streamerdraft-api",   // which app replied
-    time: new Date().toISOString(), // changes on every refresh, proving the reply is live
-  });
+  try {
+    // Ask the database a tiny question. If it answers, the connection works.
+    // NOW() is SQL for "what's the current time?". "AS db_time" names the answer.
+    const result = await db.query("SELECT NOW() AS db_time");
+
+    return NextResponse.json({
+      ok: true,
+      service: "streamerdraft-api",
+      database: "connected",
+      dbTime: result.rows[0].db_time, // rows = the answer, [0] = first row
+    });
+  } catch (error) {
+    // Something went wrong talking to the database.
+    // The FULL error goes to the terminal (for us to debug).
+    // The browser only gets a short message (never leak details to visitors).
+    console.error("[health] database error:", error);
+
+    return NextResponse.json(
+      { ok: false, service: "streamerdraft-api", database: "error" },
+      { status: 503 } // 503 = "service unavailable"
+    );
+  }
 }
