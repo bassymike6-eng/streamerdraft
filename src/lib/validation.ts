@@ -57,6 +57,10 @@ const shared = {
   marketingOptIn: z.boolean().default(false),
   // The recruit code from the link they came through (if any).
   // We don't fail the sign-up over a bad code, we just ignore it later.
+    // "I'm based in the UK": optional, false if not sent.
+  // Anyone can join, but only UK-based people can win the prize
+  // or count as someone's recruit.
+  basedInUk: z.boolean({ error: "Answer yes or no." }).default(false),
   ref: z.string().trim().max(20).optional(),
 };
 

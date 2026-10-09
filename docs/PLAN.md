@@ -13,7 +13,7 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
 - [x] B0 Setup: project, folders, /api/health, secrets files
 - [x] B1 Database: PostgreSQL + the sign-ups table + migration runner
 - [x] B2 Sign-up API: POST /api/signup, input checks, one email = one role
-- [ ] B3 Email confirmation
+- [x] B3 Email confirmation
   - [x] 1. Migration 002: number counters + rules_accepted_at column
   - [x] 2. Secret link maker (src/lib/tokens.ts)
   - [x] 3. Email sender with dev mode (src/lib/email.ts)
@@ -22,7 +22,7 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
   - [x] 6. Confirm endpoint: POST /api/confirm (token + rules tick)
   - [x] 7. Test the whole flow (requests/confirm.http)
   - [x] 8. Commit
-- [ ] B4 Referrals, UK eligibility + numbers
+- [x] B4 Referrals, UK eligibility + numbers
   - Migration 003: "based in UK" answer + Cloudflare country code
   - Recruit counts (confirmed + UK) and pending counts
   - 300 counter (all prospect sign-ups, any country)
@@ -44,6 +44,7 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
 ## Launch
 - [ ] L0 Buy streamerdraft.com + verify it in Resend (emails from @streamerdraft.com)
 - [ ] L1 Deploy to the VPS behind Cloudflare, soft launch
+- [ ] Lock the server so it only accepts traffic from Cloudflare (otherwise CF-IPCountry can be faked)
 - [ ] L0 Buy streamerdraft.com, verify it in Resend (SPF + DKIM), add DMARC,
       test inbox delivery on Gmail, Outlook, Yahoo, iCloud + mail-tester.com
 

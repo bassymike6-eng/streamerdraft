@@ -1,0 +1,216 @@
+# requests/stats.http
+#
+# WHAT THIS IS
+# Builds a small recruit chain through the real sign-up API, then checks
+# the Road to 300 count, recruit counts and leaderboard react correctly.
+#
+# THE CAST
+#   Alpha   UK prospect      recruits: A1 (UK), A2 (UK scout), A3 (UK, stays pending), A4 (not UK)
+#   Bravo   UK prospect      recruits: B1 (UK), B2 (UK)
+#   Charlie NOT UK prospect  recruits: C1 (UK)
+#
+# HOW TO RUN IT
+# 1. Send tests 1-10 top to bottom, ONCE each. Order matters: the recruits
+#    use their recruiter's code, grabbed from the recruiter's reply.
+# 2. Send test 11 (stats before anyone confirms).
+# 3. Run SQL STEP A in pgAdmin, then send tests 12, 13 and 14.
+# 4. Run SQL STEP B in pgAdmin, then send test 15.
+#
+# Messed up? Run this in pgAdmin (streamerdraft) and start again from test 1.
+# It only deletes this file's people:
+#   DELETE FROM signups WHERE email LIKE '%@chain.example.com';
+
+@base = http://localhost:3000
+
+### 1. Alpha: UK prospect → expect 201
+# @name alpha
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "alpha@chain.example.com",
+  "displayName": "Alpha",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/alpha",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 2. Bravo: UK prospect → expect 201
+# @name bravo
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "bravo@chain.example.com",
+  "displayName": "Bravo",
+  "platform": "kick",
+  "channelUrl": "kick.com/bravo",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 3. Charlie: NOT UK prospect → expect 201 (anyone can join)
+# @name charlie
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "charlie@chain.example.com",
+  "displayName": "Charlie",
+  "platform": "youtube",
+  "channelUrl": "youtube.com/@charlie",
+  "ageConfirmed": true
+}
+
+### 4. A1: UK prospect, recruited by Alpha → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "a1@chain.example.com",
+  "displayName": "A1",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/a1",
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "ref": "{{alpha.response.body.$.referralCode}}"
+}
+
+### 5. A2: UK SCOUT, recruited by Alpha → expect 201 (scouts count as recruits too)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "a2@chain.example.com",
+  "displayName": "A2 Scout",
+  "platformUrls": ["tiktok.com/@a2scout"],
+  "audienceSize": "under_10k",
+  "contentTypes": ["short_form"],
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "ref": "{{alpha.response.body.$.referralCode}}"
+}
+
+### 6. A3: UK prospect, recruited by Alpha, will stay UNCONFIRMED for now → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "a3@chain.example.com",
+  "displayName": "A3",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/a3",
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "ref": "{{alpha.response.body.$.referralCode}}"
+}
+
+### 7. A4: NOT UK prospect, recruited by Alpha → expect 201 (but never counts)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "a4@chain.example.com",
+  "displayName": "A4",
+  "platform": "tiktok",
+  "channelUrl": "tiktok.com/@a4",
+  "ageConfirmed": true,
+  "ref": "{{alpha.response.body.$.referralCode}}"
+}
+
+### 8. B1: UK prospect, recruited by Bravo → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "b1@chain.example.com",
+  "displayName": "B1",
+  "platform": "kick",
+  "channelUrl": "kick.com/b1",
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "ref": "{{bravo.response.body.$.referralCode}}"
+}
+
+### 9. B2: UK prospect, recruited by Bravo → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "b2@chain.example.com",
+  "displayName": "B2",
+  "platform": "kick",
+  "channelUrl": "kick.com/b2",
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "ref": "{{bravo.response.body.$.referralCode}}"
+}
+
+### 10. C1: UK prospect, recruited by Charlie → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "c1@chain.example.com",
+  "displayName": "C1",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/c1",
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "ref": "{{charlie.response.body.$.referralCode}}"
+}
+
+### 11. Stats BEFORE anyone confirms
+# Expect: count = your Step 4 count + 9 (A2 is a scout, so 9 not 10)
+#         leaderboard: [] (nobody is confirmed yet, so nothing counts)
+GET {{base}}/api/stats
+
+# ── SQL STEP A ─────────────────────────────────────────────────────
+# Run this in pgAdmin (Query Tool on streamerdraft), then send 12, 13, 14.
+# It confirms people with made-up times so we can test the tie-break:
+# Bravo reaches 2 recruits 40 mins ago, Alpha only 20 mins ago.
+#
+# UPDATE signups SET confirmed_at = NOW() - INTERVAL '60 minutes'
+#   WHERE email IN ('alpha@chain.example.com', 'bravo@chain.example.com', 'charlie@chain.example.com');
+# UPDATE signups SET confirmed_at = NOW() - INTERVAL '50 minutes' WHERE email = 'b1@chain.example.com';
+# UPDATE signups SET confirmed_at = NOW() - INTERVAL '40 minutes' WHERE email = 'b2@chain.example.com';
+# UPDATE signups SET confirmed_at = NOW() - INTERVAL '30 minutes' WHERE email = 'a1@chain.example.com';
+# UPDATE signups SET confirmed_at = NOW() - INTERVAL '20 minutes' WHERE email = 'a2@chain.example.com';
+# UPDATE signups SET confirmed_at = NOW() - INTERVAL '10 minutes'
+#   WHERE email IN ('a4@chain.example.com', 'c1@chain.example.com');
+
+### 12. Stats AFTER step A
+# Expect: leaderboard = Bravo #1 (2), Alpha #2 (2)
+#   - Tied on 2, Bravo got there first, so Bravo is #1
+#     (even though Alpha signed up first).
+#   - Charlie is missing: not UK, so can't win.
+GET {{base}}/api/stats
+
+### 13. Alpha's recruit counts
+# Expect: counted 2 (A1, A2), pending 1 (A3), outsideUk 1 (A4)
+GET {{base}}/api/recruits/{{alpha.response.body.$.referralCode}}
+
+### 14. Charlie's recruit counts
+# Expect: counted 1 (C1). Charlie can see his numbers,
+# he just can't appear on the leaderboard.
+GET {{base}}/api/recruits/{{charlie.response.body.$.referralCode}}
+
+# ── SQL STEP B ─────────────────────────────────────────────────────
+# A3 finally confirms. Run this in pgAdmin, then send 15.
+#
+# UPDATE signups SET confirmed_at = NOW() WHERE email = 'a3@chain.example.com';
+
+### 15. Stats AFTER step B
+# Expect: Alpha #1 (3), Bravo #2 (2)
+GET {{base}}/api/stats

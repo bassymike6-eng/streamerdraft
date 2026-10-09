@@ -88,3 +88,63 @@ Content-Type: application/json
   "role": "both",
   "email": "both@example.com"
 }
+
+### 7. UK prospect, Cloudflare says GB → expect 201
+# We send CF-IPCountry ourselves to pretend to be Cloudflare (localhost has none).
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-IPCountry: GB
+
+{
+  "role": "prospect",
+  "email": "uk1@example.com",
+  "displayName": "UK Streamer",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/ukstreamer",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 8. Scout, no UK tick, Cloudflare says US → expect 201 (anyone can join)
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-IPCountry: US
+
+{
+  "role": "scout",
+  "email": "us1@example.com",
+  "displayName": "US Creator",
+  "platformUrls": ["youtube.com/@uscreator"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["videos"],
+  "ageConfirmed": true
+}
+
+### 9. Junk country header → expect 201, country saved as empty (unknown)
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-IPCountry: hello
+
+{
+  "role": "prospect",
+  "email": "junk@example.com",
+  "displayName": "Junk Header",
+  "platform": "kick",
+  "channelUrl": "kick.com/junk",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 10. UK answer that isn't true/false → expect 400 "Answer yes or no."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "bad@example.com",
+  "displayName": "Bad Tick",
+  "platform": "kick",
+  "channelUrl": "kick.com/bad",
+  "ageConfirmed": true,
+  "basedInUk": "yes"
+}

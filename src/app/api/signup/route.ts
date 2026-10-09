@@ -22,6 +22,7 @@ import { db, isUniqueViolation } from "@/lib/db";
 import { signupSchema } from "@/lib/validation";
 import { makeReferralCode } from "@/lib/referral";
 import { issueConfirmation } from "@/lib/confirmation";
+import { getIpCountry } from "@/lib/country";
 
 // POST = "here is some data for you" (GET was "give me something")
 export async function POST(request: Request) {
@@ -67,6 +68,10 @@ export async function POST(request: Request) {
     // Prospect and scout answers go in different columns.
     // Anything that doesn't apply to this role is saved as null (empty).
     const isProspect = data.role === "prospect";
+    
+    // Country from Cloudflare (e.g. "GB"), or null if unknown.
+    // Saved as evidence for the admin dashboard; the UK tick decides eligibility.
+    const ipCountry = getIpCountry(request);
 
     // ── 4. Save them ────────────────────────────────────────────
     // Recruit codes are random, so two people COULD get the same one
@@ -78,14 +83,15 @@ export async function POST(request: Request) {
       try {
         // $1, $2, $3... are placeholders. The values array below fills
         // them in order. This keeps us safe from SQL injection.
-        const inserted = await db.query(
+               const inserted = await db.query(
           `INSERT INTO signups (
              role, email, display_name,
              platform, channel_url, stream_category,
              platform_urls, audience_size, content_types,
              age_confirmed, marketing_opt_in,
-             referral_code, referred_by_id
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+             referral_code, referred_by_id,
+             based_in_uk, ip_country
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            RETURNING id, role, email, display_name, referral_code`,
           [
             data.role, //                                         $1
@@ -101,6 +107,8 @@ export async function POST(request: Request) {
             data.marketingOptIn, //                               $11
             referralCode, //                                      $12
             referredById, //                                      $13
+            data.basedInUk, //                                    $14
+            ipCountry, //                                         $15
           ]
         );
 
