@@ -21,7 +21,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { hashToken } from "@/lib/tokens";
-
+import { limitByIp } from "@/lib/rate-limit";
 // The shape we expect the button to send
 const confirmSchema = z.object({
   token: z.string().min(20).max(100),
@@ -29,8 +29,11 @@ const confirmSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  try {
-    // ── 1. Read + check the request ─────────────────────────────
+  // ── 0. Speed limit: 20 confirm attempts per 10 minutes per IP ──
+  const limited = limitByIp(request, "confirm", 20, 10 * 60);
+  if (limited) return limited;
+
+  try {    // ── 1. Read + check the request ─────────────────────────────
     let body: unknown;
     try {
       body = await request.json();

@@ -23,11 +23,19 @@ import { signupSchema } from "@/lib/validation";
 import { makeReferralCode } from "@/lib/referral";
 import { issueConfirmation } from "@/lib/confirmation";
 import { getIpCountry } from "@/lib/country";
+import { isThrowawayEmail } from "@/lib/throwaway";
+import { getClientIp, hashIp } from "@/lib/ip";
+import { limitByIp } from "@/lib/rate-limit";
+import { isHuman } from "@/lib/turnstile";
 
 // POST = "here is some data for you" (GET was "give me something")
 export async function POST(request: Request) {
-  try {
-    // ── 1. Read the JSON body ───────────────────────────────────
+  // ── 0. Speed limit: 20 sign-up attempts per 10 minutes per IP ──
+  // Checked before anything else, so even junk requests count.
+  const limited = limitByIp(request, "signup", 20, 10 * 60);
+  if (limited) return limited;
+
+  try {    // ── 1. Read the JSON body ───────────────────────────────────
     let body: unknown; // "unknown" = we have no idea what's in it yet
     try {
       body = await request.json();
@@ -52,6 +60,38 @@ export async function POST(request: Request) {
     }
     const data = result.data; // from here on, the data is clean and checked
 
+    
+    // ── 2b. Block throwaway inboxes ─────────────────────────────
+    // Same reply shape as a validation error, so the form shows it
+    // under the email field like any other mistake.
+    if (isThrowawayEmail(data.email)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Check the highlighted fields.",
+          fields: {
+            email: ["Temporary email addresses can't be used. Use one you'll keep, so we can reach you if you win."],
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+
+        // ── 2c. Are they human? (Cloudflare Turnstile) ────────────────
+    // After the quick checks above (so a typo doesn't waste their
+    // one-time token), but before we touch the database.
+    if (!(await isHuman(data.turnstileToken, getClientIp(request)))) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "human_check_failed",
+          error: "We couldn't complete the human check. Refresh the page and try again.",
+        },
+        { status: 400 }
+      );
+    }
+
     // ── 3. Who recruited them? ──────────────────────────────────
     let referredById: string | null = null;
     if (data.ref) {
@@ -72,6 +112,10 @@ export async function POST(request: Request) {
     // Country from Cloudflare (e.g. "GB"), or null if unknown.
     // Saved as evidence for the admin dashboard; the UK tick decides eligibility.
     const ipCountry = getIpCountry(request);
+    
+    // Scrambled fingerprint of their IP (never the IP itself), so the
+    // admin dashboard can spot lots of sign-ups from the same place.
+    const ipHash = hashIp(getClientIp(request));
 
     // ── 4. Save them ────────────────────────────────────────────
     // Recruit codes are random, so two people COULD get the same one
@@ -90,8 +134,8 @@ export async function POST(request: Request) {
              platform_urls, audience_size, content_types,
              age_confirmed, marketing_opt_in,
              referral_code, referred_by_id,
-             based_in_uk, ip_country
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+             based_in_uk, ip_country, ip_hash
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            RETURNING id, role, email, display_name, referral_code`,
           [
             data.role, //                                         $1
@@ -109,6 +153,7 @@ export async function POST(request: Request) {
             referredById, //                                      $13
             data.basedInUk, //                                    $14
             ipCountry, //                                         $15
+            ipHash, //                                            $16
           ]
         );
 
@@ -129,7 +174,7 @@ export async function POST(request: Request) {
           { status: 201 } // 201 = "created"
         );
       } catch (error) {
-        // Same email already signed up (any capitals): handled below.
+        // Same inbox already signed up (capitals, dots or +tags): friendly message.
         if (isUniqueViolation(error, "signups_email_unique")) {
           return handleExistingEmail(data.email);
         }
@@ -160,9 +205,14 @@ export async function POST(request: Request) {
 // - Not confirmed yet → their first email probably got lost, so send a
 //   fresh link (this also replaces the old link).
 async function handleExistingEmail(email: string) {
+   // normalize_email() is the database function from migration 004. Comparing
+  // the normalised versions finds the original sign-up even when this attempt
+  // used dots or a +tag (bassy.mike+2@gmail.com finds bassymike@gmail.com).
   const existing = await db.query(
-    "SELECT id, email, display_name, role, referral_code, confirmed_at FROM signups WHERE lower(email) = $1",
-    [email] // already lowercase: our Zod rule did that
+    `SELECT id, email, display_name, role, referral_code, confirmed_at
+     FROM signups
+     WHERE normalize_email(email) = normalize_email($1)`,
+    [email]
   );
   const person = existing.rows[0];
 

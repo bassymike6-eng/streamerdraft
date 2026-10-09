@@ -10,6 +10,7 @@
     "db:migrate": "node --env-file=.env.local scripts/migrate.mts"
   },
   "dependencies": {
+    "disposable-email-domains-js": "^1.26.0",
     "next": "16.4.0",
     "pg": "^8.23.1",
     "react": "19.3.0",

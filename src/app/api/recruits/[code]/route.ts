@@ -20,14 +20,20 @@
 
 import { NextResponse } from "next/server";
 import { getRecruitCounts } from "@/lib/stats";
+import { limitByIp } from "@/lib/rate-limit";
 
 // A real code is letters and digits only, never longer than 20 characters.
 const CODE_SHAPE = /^[a-z0-9]{1,20}$/i;
 
 export async function GET(
-  _request: Request, // we don't need the request, the "_" says "unused on purpose"
+  request: Request,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  // Speed limit: 60 lookups per minute per IP. Plenty for a person
+  // refreshing their page; far too slow to guess codes.
+  const limited = limitByIp(request, "recruits", 60, 60);
+  if (limited) return limited;
+
   try {
     // In Next.js 15+ params arrive as a Promise, so we have to await them.
     const { code } = await params;

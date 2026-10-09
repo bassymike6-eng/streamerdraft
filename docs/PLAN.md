@@ -27,11 +27,12 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
   - Recruit counts (confirmed + UK) and pending counts
   - 300 counter (all prospect sign-ups, any country)
   - Top-10 leaderboard (1+ recruits, ties -> whoever got there first)
-- [ ] B5 Protection: bot check (Turnstile), rate limits, Gmail dot/+ tricks,
+- [x] B5 Protection: bot check (Turnstile), rate limits, Gmail dot/+ tricks,
       throwaway email block, IP fingerprint
 - [ ] B6 Admin API: password-protected, every sign-up, details, recruits, flags
 
 ## Front end
+- [ ] Turnstile widget on the sign-up form (sends turnstileToken with the sign-up)
 - [ ] F1 Intro animation
 - [ ] F2 Hero + sign-up flow ("?" on each field), "You're in" screen
       (recruit link, entry status, counted/pending recruits),
@@ -47,6 +48,8 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
 - [ ] Lock the server so it only accepts traffic from Cloudflare (otherwise CF-IPCountry can be faked)
 - [ ] L0 Buy streamerdraft.com, verify it in Resend (SPF + DKIM), add DMARC,
       test inbox delivery on Gmail, Outlook, Yahoo, iCloud + mail-tester.com
+- [ ] Create a Turnstile widget in Cloudflare for the real domain (no localhost) → NEXT_PUBLIC_TURNSTILE_SITE_KEY + TURNSTILE_SECRET_KEY on the server
+- [ ] Set a NEW random IP_HASH_SECRET on the server (and never change it after launch)
 
 ## Decisions
 ### Sign-up

@@ -19,8 +19,14 @@
 
 import { NextResponse } from "next/server";
 import { getLeaderboard, getRoadTo300 } from "@/lib/stats";
+import { limitByIp } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Speed limit: 120 per minute per IP. The landing page asks for this
+  // on every visit, so it's generous; it only stops something hammering it.
+  const limited = limitByIp(request, "stats", 120, 60);
+  if (limited) return limited;
+
   try {
     // Promise.all runs both queries at the same time instead of one
     // after the other, so the page waits for the slower one, not both.

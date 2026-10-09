@@ -62,6 +62,9 @@ const shared = {
   // or count as someone's recruit.
   basedInUk: z.boolean({ error: "Answer yes or no." }).default(false),
   ref: z.string().trim().max(20).optional(),
+    // The one-time "I'm human" token from the Cloudflare Turnstile widget.
+  // Checked with Cloudflare in the route (src/lib/turnstile.ts), not here.
+  turnstileToken: z.string().max(2048).optional(),
 };
 
 // ── Prospect (streamer) ──────────────────────────────────────────

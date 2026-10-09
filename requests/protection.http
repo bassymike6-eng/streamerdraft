@@ -1,0 +1,225 @@
+# requests/protection.http
+#
+# WHAT THIS IS
+# Tests for B5: the protection against fake sign-ups.
+#
+# ⚠ Only run these with RESEND_API_KEY empty (dev mode), so emails are
+# printed, not sent. Some of these are real-looking Gmail addresses.
+#
+# Start fresh (pgAdmin, streamerdraft):
+#   DELETE FROM signups WHERE email LIKE '%gmail.com' OR email LIKE 'plus%@example.com';
+
+@base = http://localhost:3000
+
+### 1. Original Gmail sign-up → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "bassy.test@gmail.com",
+  "displayName": "Farm Test",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/farmtest",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 2. Same inbox, no dots + a tag → expect 200 "resent"
+# The email in the terminal goes to bassy.test@gmail.com (the ORIGINAL),
+# not to this address. A farmer gets nothing new.
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "bassytest+farm1@gmail.com",
+  "displayName": "Farm Test 2",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/farmtest2",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 3. Same inbox via googlemail.com with extra dots → expect 200 "resent"
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "B.A.S.S.Y.TEST@googlemail.com",
+  "displayName": "Farm Test 3",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/farmtest3",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 4. Non-Gmail with a +tag → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "plus+one@example.com",
+  "displayName": "Plus One",
+  "platform": "kick",
+  "channelUrl": "kick.com/plusone",
+  "ageConfirmed": true
+}
+
+### 5. Same address without the tag → expect 200 "resent" (+tags are dropped for everyone)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "plus@example.com",
+  "displayName": "Plus Two",
+  "platform": "kick",
+  "channelUrl": "kick.com/plustwo",
+  "ageConfirmed": true
+}
+
+### 6. Dots on a non-Gmail address → expect 201 (dots only matter for Gmail)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "plus.dot@example.com",
+  "displayName": "Plus Dot",
+  "platform": "kick",
+  "channelUrl": "kick.com/plusdot",
+  "ageConfirmed": true
+}
+
+
+### 7. Throwaway inbox → expect 400, message under "email"
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "farmer@mailinator.com",
+  "displayName": "Farmer",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/farmer",
+  "ageConfirmed": true
+}
+
+### 8. Subdomain of a throwaway → expect 400
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "farmer@spam.mailinator.com",
+  "displayName": "Farmer",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/farmer",
+  "ageConfirmed": true
+}
+
+### 9. Throwaway in capitals → expect 400
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "Farmer@YOPMAIL.COM",
+  "displayName": "Farmer",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/farmer",
+  "ageConfirmed": true
+}
+
+### 10. Normal inbox → expect 201 (the block doesn't catch real people)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "real.person@gmail.com",
+  "displayName": "Real Person",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/realperson",
+  "ageConfirmed": true
+}
+
+
+### 11. IP A → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-Connecting-IP: 203.0.113.7
+
+{ "role": "prospect", "email": "ip1@example.com", "displayName": "IP One", "platform": "twitch", "channelUrl": "twitch.tv/ip1", "ageConfirmed": true }
+
+### 12. Same IP A, different person → expect 201 (same fingerprint as 11)
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-Connecting-IP: 203.0.113.7
+
+{ "role": "prospect", "email": "ip2@example.com", "displayName": "IP Two", "platform": "twitch", "channelUrl": "twitch.tv/ip2", "ageConfirmed": true }
+
+### 13. IP B → expect 201 (different fingerprint)
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-Connecting-IP: 203.0.113.8
+
+{ "role": "prospect", "email": "ip3@example.com", "displayName": "IP Three", "platform": "twitch", "channelUrl": "twitch.tv/ip3", "ageConfirmed": true }
+
+### 14. IPv6 → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-Connecting-IP: 2001:db8:1:2::abcd
+
+{ "role": "prospect", "email": "ip4@example.com", "displayName": "IP Four", "platform": "twitch", "channelUrl": "twitch.tv/ip4", "ageConfirmed": true }
+
+### 15. Same IPv6 network, different address → expect 201 (same fingerprint as 14)
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-Connecting-IP: 2001:db8:1:2:ffff:eeee:dddd:cccc
+
+{ "role": "prospect", "email": "ip5@example.com", "displayName": "IP Five", "platform": "twitch", "channelUrl": "twitch.tv/ip5", "ageConfirmed": true }
+
+### 16. Junk IP header → expect 201 (no fingerprint saved)
+POST {{base}}/api/signup
+Content-Type: application/json
+CF-Connecting-IP: not-an-ip
+
+{ "role": "prospect", "email": "ip6@example.com", "displayName": "IP Six", "platform": "twitch", "channelUrl": "twitch.tv/ip6", "ageConfirmed": true }
+
+### 17. No header at all → expect 201 (fingerprint of your own computer, via Next.js)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{ "role": "prospect", "email": "ip7@example.com", "displayName": "IP Seven", "platform": "twitch", "channelUrl": "twitch.tv/ip7", "ageConfirmed": true }
+
+
+### 18. Sign-up WITH the dummy "I'm human" token
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "human1@example.com",
+  "displayName": "Human One",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/human1",
+  "ageConfirmed": true,
+  "turnstileToken": "XXXX.DUMMY.TOKEN.XXXX"
+}
+
+### 19. Sign-up with NO token
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "human2@example.com",
+  "displayName": "Human Two",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/human2",
+  "ageConfirmed": true
+}
