@@ -16,6 +16,8 @@
 //   the page can explain why a friend isn't showing up as counted.
 // - Leaderboard: only confirmed, UK-based prospects (the people who can win)
 //   with at least 1 counted recruit. Same count? Whoever got there first ranks higher.
+// - DISQUALIFIED people (set from the admin dashboard) don't count anywhere:
+//   not in the 300, not as anyone's recruit, not on the leaderboard.
 //
 // ONE THING TO KNOW ABOUT COUNT
 // Postgres's COUNT() returns a "bigint" (a huge whole number). The pg driver
@@ -30,7 +32,7 @@ export const GOAL = 300;
 // ── 1. Road to 300 ──────────────────────────────────────────────────
 export async function getRoadTo300(): Promise<{ count: number; goal: number }> {
   const result = await db.query(
-    "SELECT COUNT(*)::int AS count FROM signups WHERE role = 'prospect'"
+    "SELECT COUNT(*)::int AS count FROM signups WHERE role = 'prospect' AND disqualified_at IS NULL"
   );
   return { count: result.rows[0].count, goal: GOAL };
 }
@@ -48,6 +50,7 @@ export async function getRecruitCounts(referralCode: string): Promise<RecruitCou
   // r = the recruiter, x = the people they recruited.
   // LEFT JOIN keeps the recruiter even when they have 0 recruits
   // (a normal JOIN would drop them and we'd wrongly say "unknown code").
+  // "AND x.disqualified_at IS NULL" in the join leaves disqualified recruits out.
   // FILTER (WHERE ...) = "only count the rows that match this".
   // COUNT(x.id) skips the empty row LEFT JOIN makes when there are 0 recruits.
   const result = await db.query(
@@ -56,7 +59,7 @@ export async function getRecruitCounts(referralCode: string): Promise<RecruitCou
        COUNT(x.id) FILTER (WHERE x.based_in_uk AND x.confirmed_at IS NULL)::int     AS pending,
        COUNT(x.id) FILTER (WHERE NOT x.based_in_uk)::int                            AS outside_uk
      FROM signups r
-     LEFT JOIN signups x ON x.referred_by_id = r.id
+     LEFT JOIN signups x ON x.referred_by_id = r.id AND x.disqualified_at IS NULL
      WHERE r.referral_code = $1
      GROUP BY r.id`,
     [referralCode.toLowerCase()]
@@ -93,8 +96,10 @@ export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
      WHERE r.role = 'prospect'
        AND r.confirmed_at IS NOT NULL
        AND r.based_in_uk
+       AND r.disqualified_at IS NULL
        AND x.confirmed_at IS NOT NULL
        AND x.based_in_uk
+       AND x.disqualified_at IS NULL
      GROUP BY r.id, r.display_name
      ORDER BY recruits DESC, reached_at ASC, r.id ASC
      LIMIT $1`,

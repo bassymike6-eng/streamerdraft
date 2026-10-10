@@ -1,0 +1,102 @@
+# requests/admin.http
+#
+# WHAT THIS IS
+# Tests for B6: the admin API.
+# The password comes from requests/.env (ignored by git), never this file.
+# REST Client remembers cookies like a browser, so after test 3 logs in,
+# the tests after it are logged in too.
+
+@base = http://localhost:3000
+
+### 1. Not logged in → expect 401 "Log in to see this."
+GET {{base}}/api/admin/me
+
+### 2. Wrong password → expect 401 "Wrong password."
+POST {{base}}/api/admin/login
+Content-Type: application/json
+
+{ "password": "definitely-not-it" }
+
+### 3. Right password → expect 200, and a "set-cookie: sd_admin=..." header
+# @prompt password Your admin password (from .env.local)
+POST {{base}}/api/admin/login
+Content-Type: application/json
+
+{ "password": "{{password}}" }
+### 4. Logged in now → expect 200 { "ok": true }
+GET {{base}}/api/admin/me
+
+### 5. Log out → expect 200
+POST {{base}}/api/admin/logout
+
+### 6. Logged out again → expect 401
+GET {{base}}/api/admin/me
+
+
+# ── DATA (send test 3 first to log in again: test 5 logged you out) ──
+
+### 7. Headline numbers → expect 200
+GET {{base}}/api/admin/overview
+
+### 8. Graph data, last 30 days → expect 200, "daily" has 30 entries
+GET {{base}}/api/admin/charts
+
+### 9. Graph data, last 7 days → expect 200, "daily" has 7 entries
+GET {{base}}/api/admin/charts?days=7
+
+### 10. Silly range → expect 400 "days must be a number from 7 to 365."
+GET {{base}}/api/admin/charts?days=2
+
+
+# ── PEOPLE (log in with test 3 first if you restarted the server) ──
+
+### 11. The big table, newest first → expect 200, total 30
+GET {{base}}/api/admin/signups
+
+### 12. Only flagged people → expect total 3 (IP Seven, Human One, Human Two)
+GET {{base}}/api/admin/signups?flagged=yes
+
+### 13. Search → expect total 1 (Alpha)
+GET {{base}}/api/admin/signups?search=alpha
+
+### 14. Prospects, most recruits first → expect Alpha, Bravo, Charlie at the top
+GET {{base}}/api/admin/signups?role=prospect&sort=recruits&pageSize=10
+
+### 15. Bad filter → expect 400 "Check the filters."
+GET {{base}}/api/admin/signups?role=admin
+
+### 16. Alpha's person page → expect 4 recruits (A1-A4)
+GET {{base}}/api/admin/signups/27
+
+### 17. Disqualify Alpha (a test!) → expect "disqualified": true
+PATCH {{base}}/api/admin/signups/27
+Content-Type: application/json
+
+{ "disqualified": true, "reason": "Testing disqualify", "note": "Just a test" }
+
+### 18. PUBLIC stats → expect count 26 (was 27) and Bravo now #1, Alpha gone
+GET {{base}}/api/stats
+
+### 19. Admin leaderboard → Bravo rank 1, Alpha listed with rank null
+GET {{base}}/api/admin/leaderboard
+
+### 20. Reinstate Alpha + clear the note → expect "disqualified": false
+PATCH {{base}}/api/admin/signups/27
+Content-Type: application/json
+
+{ "disqualified": false, "note": "" }
+
+### 21. Red flags → expect 1 IP group of 3 (IP Seven, Human One, Human Two)
+GET {{base}}/api/admin/flags
+
+### 22. Delete WITHOUT confirming → expect 400
+DELETE {{base}}/api/admin/signups/42
+
+### 23. Delete Plus Dot (test data) → expect 200 { "deleted": 42 }
+DELETE {{base}}/api/admin/signups/42
+Content-Type: application/json
+
+{ "confirm": true }
+
+### 24. Spreadsheet download → expect CSV text, one line per person
+GET {{base}}/api/admin/export

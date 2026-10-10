@@ -29,7 +29,7 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
   - Top-10 leaderboard (1+ recruits, ties -> whoever got there first)
 - [x] B5 Protection: bot check (Turnstile), rate limits, Gmail dot/+ tricks,
       throwaway email block, IP fingerprint
-- [ ] B6 Admin API: password-protected, every sign-up, details, recruits, flags
+- [x] B6 Admin API: password-protected, every sign-up, details, recruits, flags
 
 ## Front end
 - [ ] Turnstile widget on the sign-up form (sends turnstileToken with the sign-up)
@@ -41,10 +41,16 @@ Phase 0: the coming-soon page (waitlist, referrals, Road to 300, GTA 6 comp).
 - [ ] F4 Privacy + competition rules pages
 - [ ] F5 Admin dashboard at /admin (sign-ups, details, recruits,
       country breakdown, cheat flags, GTA 6 winner check)
+- [ ] Admin: login page (/admin)
+- [ ] Admin: overview cards + graphs (overview, charts)
+- [ ] Admin: people table with search/filters → person page (disqualify, notes, delete)
+- [ ] Admin: full leaderboard (winner picking) + red flags page
+- [ ] Admin: "Download CSV" button
 
 ## Launch
 - [ ] L0 Buy streamerdraft.com + verify it in Resend (emails from @streamerdraft.com)
 - [ ] L1 Deploy to the VPS behind Cloudflare, soft launch
+- [ ] Strong, NEW ADMIN_PASSWORD + ADMIN_SESSION_SECRET on the server (not the dev ones)
 - [ ] Lock the server so it only accepts traffic from Cloudflare (otherwise CF-IPCountry can be faked)
 - [ ] L0 Buy streamerdraft.com, verify it in Resend (SPF + DKIM), add DMARC,
       test inbox delivery on Gmail, Outlook, Yahoo, iCloud + mail-tester.com
