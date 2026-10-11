@@ -6,13 +6,14 @@
 //   getSignupDetail()    one person: details, their recruits, who shares their IP
 //   setDisqualified()    disqualify / reinstate someone
 //   setNote()            your private note on someone
+//   setScoutApproved()   approve / un-approve a scout's application
 //   deleteSignup()       remove someone completely (e.g. "delete my data" requests)
 //   getAdminLeaderboard() the FULL leaderboard, with the extra info to pick a winner
 //   getFlags()           all the red flags, grouped
 //   getExportRows()      every sign-up, for the CSV download
 //
-// It all reads from the admin_signups view (migration 005), which already
-// has the recruit counts and red flags worked out.
+// It all reads from the admin_signups view (migrations 005 + 006), which
+// already has the recruit counts, red flags and scout answers worked out.
 
 import "server-only";
 import { db } from "@/lib/db";
@@ -37,6 +38,9 @@ const PERSON_COLUMNS = `
   recruiter_id::int AS "recruiterId", recruiter_name AS "recruiterName", recruiter_code AS "recruiterCode",
   recruits_counted AS "recruitsCounted", recruits_pending AS "recruitsPending",
   recruits_outside_uk AS "recruitsOutsideUk", recruits_total AS "recruitsTotal",
+  scout_offers AS "scoutOffers", scout_hours AS "scoutHours", scout_pitch AS "scoutPitch",
+  commitment_accepted_at AS "commitmentAcceptedAt",
+  scout_approved AS "scoutApproved", scout_approved_at AS "scoutApprovedAt",
   flagged,
   flag_shared_ip AS "flagSharedIp", flag_same_ip_as_recruiter AS "flagSameIpAsRecruiter",
   flag_uk_mismatch AS "flagUkMismatch", flag_tor AS "flagTor", flag_recruit_burst AS "flagRecruitBurst"
@@ -46,7 +50,7 @@ const PERSON_COLUMNS = `
 export type SignupFilters = {
   search?: string; // matches email, name or recruit code
   role?: "prospect" | "scout";
-  status?: "confirmed" | "unconfirmed" | "eligible" | "disqualified";
+  status?: "confirmed" | "unconfirmed" | "eligible" | "disqualified" | "approved" | "awaiting_approval";
   uk?: "yes" | "no";
   flagged?: "yes";
   sort: "newest" | "oldest" | "recruits" | "name";
@@ -69,6 +73,8 @@ const STATUS_RULES = {
   unconfirmed: "NOT confirmed",
   eligible: "eligible",
   disqualified: "disqualified",
+  approved: "scout_approved", // scouts you've approved
+  awaiting_approval: "role = 'scout' AND NOT scout_approved AND NOT disqualified", // scouts to review
 } as const;
 
 export async function listSignups(filters: SignupFilters) {
@@ -162,6 +168,23 @@ export async function setNote(id: number, note: string) {
   // An empty note clears it (saved as NULL rather than "")
   const result = await db.query(`UPDATE signups SET admin_note = NULLIF($2, '') WHERE id = $1`, [id, note]);
   return result.rowCount === 1;
+}
+
+// Scouts only. Returns "ok", "not_found", or "not_scout" (prospects don't get approved).
+export async function setScoutApproved(id: number, approved: boolean) {
+  const result = await db.query(
+    approved
+      ? // COALESCE keeps the ORIGINAL approval time if they were already approved
+        `UPDATE signups SET scout_approved_at = COALESCE(scout_approved_at, NOW())
+         WHERE id = $1 AND role = 'scout'`
+      : `UPDATE signups SET scout_approved_at = NULL WHERE id = $1 AND role = 'scout'`,
+    [id]
+  );
+  if (result.rowCount === 1) return "ok";
+
+  // Nothing changed: work out why, so the dashboard can say something useful.
+  const exists = await db.query("SELECT 1 FROM signups WHERE id = $1", [id]);
+  return exists.rows.length === 0 ? "not_found" : "not_scout";
 }
 
 export async function deleteSignup(id: number) {

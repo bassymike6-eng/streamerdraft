@@ -3,7 +3,8 @@
 // WHAT THIS IS
 // The numbers behind the admin dashboard's cards and graphs:
 //   getOverview()  → the headline numbers (cards across the top)
-//   getCharts()    → data shaped ready for graphs (lines, bars, pies)
+//   getCharts()    → data shaped ready for graphs (lines, bars, pies),
+//                    including what scouts can offer and their hours
 //
 // Everything here is read-only. Times are grouped by UK time
 // (Europe/London), so "today" means today in the UK, not in UTC.
@@ -58,7 +59,9 @@ export async function getOverview() {
       SELECT
         COUNT(*) FILTER (WHERE eligible)::int     AS eligible,
         COUNT(*) FILTER (WHERE flagged)::int      AS flagged,
-        COUNT(*) FILTER (WHERE disqualified)::int AS disqualified
+        COUNT(*) FILTER (WHERE disqualified)::int AS disqualified,
+        COUNT(*) FILTER (WHERE role = 'scout' AND scout_approved)::int AS scouts_approved,
+        COUNT(*) FILTER (WHERE role = 'scout' AND NOT scout_approved AND NOT disqualified)::int AS scouts_waiting
       FROM admin_signups
     `)
   ).rows[0];
@@ -112,16 +115,21 @@ export async function getOverview() {
       flagged: competition.flagged,
       disqualified: competition.disqualified,
     },
+    scouts: {
+      approved: competition.scouts_approved,
+      awaitingApproval: competition.scouts_waiting, // applications for you to review
+    },
   };
 }
 
 // ── Graph data ──────────────────────────────────────────────────────
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const AUDIENCE_ORDER = ["under_10k", "10k_50k", "50k_100k", "100k_plus"];
+const HOURS_ORDER = ["under_3", "3_5", "6_10", "10_plus"];
 
 export async function getCharts(days: number) {
   // Each query is independent, so Promise.all runs them all at once.
-  const [daily, platform, audience, content, country, ukTick, category, hour, weekday, funnel] =
+  const [daily, platform, audience, content, country, ukTick, category, hour, weekday, funnel, offers, hours] =
     await Promise.all([
       // 1. Day by day, for line charts. generate_series makes one row per day,
       //    so days with 0 sign-ups still appear (as 0) instead of vanishing.
@@ -206,6 +214,16 @@ export async function getCharts(days: number) {
                   COUNT(*) FILTER (WHERE eligible)::int        AS eligible,
                   COUNT(*) FILTER (WHERE eligible AND recruits_counted > 0)::int AS recruiting
                 FROM admin_signups WHERE role = 'prospect'`),
+
+      // 11. What scouts can offer (each ticked option counts once)
+      db.query(`SELECT unnest(scout_offers) AS label, COUNT(*)::int AS count
+                FROM signups WHERE role = 'scout'
+                GROUP BY label ORDER BY count DESC`),
+
+      // 12. How many hours a month scouts can give
+      db.query(`SELECT scout_hours AS label, COUNT(*)::int AS count
+                FROM signups WHERE role = 'scout' AND scout_hours IS NOT NULL
+                GROUP BY scout_hours`),
     ]);
 
   const f = funnel.rows[0];
@@ -231,6 +249,10 @@ export async function getCharts(days: number) {
     byStreamCategory: withPercents(category.rows),
     byHour: hour.rows.map((row) => ({ hour: row.hour, count: row.count })),
     byWeekday: weekday.rows.map((row) => ({ day: WEEKDAYS[row.weekday - 1], count: row.count })),
+    byScoutOffer: withPercents(offers.rows),
+    byScoutHours: withPercents(
+      [...hours.rows].sort((a, b) => HOURS_ORDER.indexOf(a.label) - HOURS_ORDER.indexOf(b.label))
+    ),
     prospectFunnel: [
       { step: "Signed up", count: f.signed_up, percent: 100 },
       { step: "Confirmed email", count: f.confirmed, percent: percent(f.confirmed, f.signed_up) },

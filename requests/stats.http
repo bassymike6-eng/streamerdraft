@@ -94,7 +94,10 @@ Content-Type: application/json
   "contentTypes": ["short_form"],
   "ageConfirmed": true,
   "basedInUk": true,
-  "ref": "{{alpha.response.body.$.referralCode}}"
+  "ref": "{{alpha.response.body.$.referralCode}}",
+  "scoutOffers": ["feedback"],
+  "scoutHours": "3_5",
+  "commitmentAccepted": true
 }
 
 ### 6. A3: UK prospect, recruited by Alpha, will stay UNCONFIRMED for now → expect 201

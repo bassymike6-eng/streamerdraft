@@ -127,15 +127,17 @@ export async function POST(request: Request) {
       try {
         // $1, $2, $3... are placeholders. The values array below fills
         // them in order. This keeps us safe from SQL injection.
-               const inserted = await db.query(
+                       const inserted = await db.query(
           `INSERT INTO signups (
              role, email, display_name,
              platform, channel_url, stream_category,
              platform_urls, audience_size, content_types,
              age_confirmed, marketing_opt_in,
              referral_code, referred_by_id,
-             based_in_uk, ip_country, ip_hash
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             based_in_uk, ip_country, ip_hash,
+             scout_offers, scout_hours, scout_pitch, commitment_accepted_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
            RETURNING id, role, email, display_name, referral_code`,
           [
             data.role, //                                         $1
@@ -154,6 +156,12 @@ export async function POST(request: Request) {
             data.basedInUk, //                                    $14
             ipCountry, //                                         $15
             ipHash, //                                            $16
+            // The scout application (B7): empty for prospects
+            isProspect ? null : data.scoutOffers, //              $17
+            isProspect ? null : data.scoutHours, //               $18
+            isProspect ? null : data.scoutPitch || null, //       $19
+            // The moment they signed up = the moment they ticked the commitment
+            isProspect ? null : new Date(), //                    $20
           ]
         );
 

@@ -100,3 +100,45 @@ Content-Type: application/json
 
 ### 24. Spreadsheet download → expect CSV text, one line per person
 GET {{base}}/api/admin/export
+
+
+# ── SCOUTS (log in with test 3 first) ──
+
+### 25. Scouts waiting for approval → expect total 5
+# Big Creator, US Creator, A2 Scout, and the 2 from scouts.http
+GET {{base}}/api/admin/signups?status=awaiting_approval
+
+### 26. Find the full@scouts scout (gives us their id for test 27)
+# @name fullScout
+GET {{base}}/api/admin/signups?search=full@scouts
+
+### 27. Approve them → expect "scoutApproved": true, and their offers/hours/pitch
+PATCH {{base}}/api/admin/signups/{{fullScout.response.body.$.signups[0].id}}
+Content-Type: application/json
+
+{ "scoutApproved": true }
+
+### 28. Find the p1 prospect (for test 29)
+# @name p1
+GET {{base}}/api/admin/signups?search=p1@scouts
+
+### 29. Try to approve a PROSPECT → expect 400 "Only scouts can be approved."
+PATCH {{base}}/api/admin/signups/{{p1.response.body.$.signups[0].id}}
+Content-Type: application/json
+
+{ "scoutApproved": true }
+
+### 30. Approved scouts → expect total 1
+GET {{base}}/api/admin/signups?status=approved
+
+### 31. Overview → expect "scouts": { "approved": 1, "awaitingApproval": 4 }
+GET {{base}}/api/admin/overview
+
+### 32. Charts → look for "byScoutOffer" and "byScoutHours" near the bottom
+GET {{base}}/api/admin/charts
+
+### 33. Un-approve → expect "scoutApproved": false
+PATCH {{base}}/api/admin/signups/{{fullScout.response.body.$.signups[0].id}}
+Content-Type: application/json
+
+{ "scoutApproved": false }

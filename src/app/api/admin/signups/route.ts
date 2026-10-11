@@ -7,7 +7,8 @@
 // EVERYTHING IS OPTIONAL, mix and match in the URL:
 //   ?search=bassy           email, name or recruit code contains "bassy"
 //   ?role=prospect          or scout
-//   ?status=confirmed       or unconfirmed, eligible, disqualified
+//   ?status=confirmed       or unconfirmed, eligible, disqualified,
+//                           approved (scouts), awaiting_approval (scouts to review)
 //   ?uk=yes                 or no
 //   ?flagged=yes            only people with a red flag
 //   ?sort=recruits          or newest (default), oldest, name
@@ -22,7 +23,9 @@ import { listSignups } from "@/lib/admin-signups";
 const querySchema = z.object({
   search: z.string().trim().max(100).optional(),
   role: z.enum(["prospect", "scout"]).optional(),
-  status: z.enum(["confirmed", "unconfirmed", "eligible", "disqualified"]).optional(),
+  status: z
+    .enum(["confirmed", "unconfirmed", "eligible", "disqualified", "approved", "awaiting_approval"])
+    .optional(),
   uk: z.enum(["yes", "no"]).optional(),
   flagged: z.enum(["yes"]).optional(),
   sort: z.enum(["newest", "oldest", "recruits", "name"]).default("newest"),

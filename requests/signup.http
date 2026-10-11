@@ -65,7 +65,10 @@ Content-Type: application/json
   "audienceSize": "50k_100k",
   "contentTypes": ["short_form", "streaming"],
   "ageConfirmed": true,
-  "ref": "{{prospect.response.body.$.referralCode}}"
+  "ref": "{{prospect.response.body.$.referralCode}}",
+  "scoutOffers": ["feedback"],
+  "scoutHours": "3_5",
+  "commitmentAccepted": true
 }
 
 ### 5. Broken scout → expect 400 (no links, no audience size, no content types)
@@ -117,7 +120,10 @@ CF-IPCountry: US
   "platformUrls": ["youtube.com/@uscreator"],
   "audienceSize": "10k_50k",
   "contentTypes": ["videos"],
-  "ageConfirmed": true
+  "ageConfirmed": true,
+  "scoutOffers": ["feedback"],
+  "scoutHours": "3_5",
+  "commitmentAccepted": true
 }
 
 ### 9. Junk country header → expect 201, country saved as empty (unknown)

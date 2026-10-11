@@ -10,6 +10,7 @@
 //            { "disqualified": true, "reason": "fake recruits" }
 //            { "disqualified": false }               ← reinstate them
 //            { "note": "DM'd them on TikTok" }       ← "" clears the note
+//            { "scoutApproved": true }               ← approve a scout (false = un-approve)
 //
 //   DELETE /api/admin/signups/42   remove them completely, for "delete my
 //            { "confirm": true }   data" requests. Can't be undone, so the
@@ -20,7 +21,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin-auth";
-import { deleteSignup, getSignupDetail, setDisqualified, setNote } from "@/lib/admin-signups";
+import { deleteSignup, getSignupDetail, setDisqualified, setNote, setScoutApproved } from "@/lib/admin-signups";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -32,10 +33,12 @@ const patchSchema = z
     disqualified: z.boolean().optional(),
     reason: z.string().trim().max(200).optional(),
     note: z.string().trim().max(1000).optional(),
+    scoutApproved: z.boolean().optional(),
   })
-  .refine((body) => body.disqualified !== undefined || body.note !== undefined, {
-    error: "Send disqualified and/or note.",
-  });
+  .refine(
+    (body) => body.disqualified !== undefined || body.note !== undefined || body.scoutApproved !== undefined,
+    { error: "Send disqualified, note and/or scoutApproved." }
+  );
 
 const deleteSchema = z.object({ confirm: z.literal(true) });
 
@@ -78,11 +81,24 @@ export async function PATCH(request: Request, { params }: Context) {
 
   const body = patchSchema.safeParse(await readJson(request));
   if (!body.success) {
-    return NextResponse.json({ ok: false, error: "Send disqualified (true/false) and/or a note." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Send disqualified (true/false), a note and/or scoutApproved (true/false)." },
+      { status: 400 }
+    );
   }
 
   try {
-    const { disqualified, reason, note } = body.data;
+    const { disqualified, reason, note, scoutApproved } = body.data;
+
+    // Approving is checked FIRST: if this isn't a scout, nothing else gets
+    // changed either, so a mistake never leaves half a change behind.
+    if (scoutApproved !== undefined) {
+      const outcome = await setScoutApproved(id.data, scoutApproved);
+      if (outcome === "not_found") return notFound();
+      if (outcome === "not_scout") {
+        return NextResponse.json({ ok: false, error: "Only scouts can be approved." }, { status: 400 });
+      }
+    }
     if (disqualified !== undefined && !(await setDisqualified(id.data, disqualified, reason))) return notFound();
     if (note !== undefined && !(await setNote(id.data, note))) return notFound();
 

@@ -73,7 +73,10 @@ Content-Type: application/json
   "platformUrls": ["tiktok.com/@bigcreator"],
   "audienceSize": "50k_100k",
   "contentTypes": ["streaming"],
-  "ageConfirmed": true
+  "ageConfirmed": true,
+  "scoutOffers": ["feedback"],
+  "scoutHours": "3_5",
+  "commitmentAccepted": true  
 }
 
 ### 7. Scout signs up again before confirming → 200 "resent". Copy the NEW token into @scoutNewToken
@@ -87,7 +90,10 @@ Content-Type: application/json
   "platformUrls": ["tiktok.com/@bigcreator"],
   "audienceSize": "50k_100k",
   "contentTypes": ["streaming"],
-  "ageConfirmed": true
+  "ageConfirmed": true,
+  "scoutOffers": ["feedback"],
+  "scoutHours": "3_5",
+  "commitmentAccepted": true
 }
 
 ### 8. Use the OLD scout link → 400 "invalid" (the new email replaced it)

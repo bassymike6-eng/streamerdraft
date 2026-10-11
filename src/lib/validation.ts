@@ -94,6 +94,25 @@ const scoutSchema = z.object({
       error: "Pick at least one type of content.",
     })
     .min(1, { error: "Pick at least one type of content." }),
+
+  // ── The scout application (B7) ──
+  // What they can actually do for a prospect. Tick 1 or more.
+  scoutOffers: z
+    .array(
+      z.enum(["obs_setup", "multistreaming", "clipping", "raids", "collabs", "feedback", "socials", "intros"]),
+      { error: "Pick at least one thing you can help with." }
+    )
+    .min(1, { error: "Pick at least one thing you can help with." }),
+  // Roughly how many hours a month they can give.
+  scoutHours: z.enum(["under_3", "3_5", "6_10", "10_plus"], {
+    error: "Pick roughly how many hours a month you could give.",
+  }),
+  // One line on why they want to scout. Optional; empty = not given.
+  scoutPitch: z.string().trim().max(200, { error: "Keep this under 200 characters." }).optional(),
+  // Must be exactly true: they agree to 6 weeks, 2 feedback calls, 1 raid or collab.
+  commitmentAccepted: z.literal(true, {
+    error: "Tick the box to agree to the scout commitment.",
+  }),
 });
 
 // ── The full rule: it's EITHER a prospect OR a scout ─────────────

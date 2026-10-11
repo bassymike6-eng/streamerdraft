@@ -1,0 +1,108 @@
+# requests/scouts.http
+#
+# WHAT THIS IS
+# Tests for B7: the scout application.
+#
+# Start fresh (pgAdmin, streamerdraft):
+#   DELETE FROM signups WHERE email LIKE '%@scouts.example.com';
+
+@base = http://localhost:3000
+
+### 1. Full scout application → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "full@scouts.example.com",
+  "displayName": "Scout Test",
+  "platformUrls": ["tiktok.com/@scouttest"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["short_form"],
+  "ageConfirmed": true,
+  "basedInUk": true,
+  "scoutOffers": ["obs_setup", "clipping", "feedback"],
+  "scoutHours": "6_10",
+  "scoutPitch": "I edit clips for 3 streamers and want to help new ones.",
+  "commitmentAccepted": true,
+}
+
+### 2. Scout who skipped the application → expect 400, 3 messages
+# (scoutOffers, scoutHours, commitmentAccepted)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "missing@scouts.example.com",
+  "displayName": "Scout Test",
+  "platformUrls": ["tiktok.com/@scouttest"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["short_form"],
+  "ageConfirmed": true
+}
+
+### 3. Made-up offer → expect 400 on scoutOffers
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "badoffer@scouts.example.com",
+  "displayName": "Scout Test",
+  "platformUrls": ["tiktok.com/@scouttest"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["short_form"],
+  "ageConfirmed": true,
+  "scoutOffers": ["hacking"],
+  "scoutHours": "6_10",
+  "commitmentAccepted": true
+}
+
+### 4. Didn't tick the commitment → expect 400 "Tick the box to agree..."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "nocommit@scouts.example.com",
+  "displayName": "Scout Test",
+  "platformUrls": ["tiktok.com/@scouttest"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["short_form"],
+  "ageConfirmed": true,
+  "scoutOffers": ["raids"],
+  "scoutHours": "under_3",
+  "commitmentAccepted": false
+}
+
+### 5. No pitch (it's optional) → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "nopitch@scouts.example.com",
+  "displayName": "Scout Test",
+  "platformUrls": ["tiktok.com/@scouttest"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["short_form"],
+  "ageConfirmed": true,
+  "scoutOffers": ["raids"],
+  "scoutHours": "under_3",
+  "scoutPitch": "",
+  "commitmentAccepted": true
+}
+
+### 6. Prospects aren't asked any of this → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "p1@scouts.example.com",
+  "displayName": "Prospect",
+  "platform": "twitch",
+  "channelUrl": "twitch.tv/prospect",
+  "ageConfirmed": true
+}
