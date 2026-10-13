@@ -33,7 +33,7 @@ export type Visitor = {
 // Night is 7pm to 7am on the visitor's clock.
 // BRIGHT_AT_NIGHT = true  -> bright at night, dark in the day (what we have now)
 // BRIGHT_AT_NIGHT = false -> dark at night, bright in the day (the flip on your list)
-const BRIGHT_AT_NIGHT = false;
+const BRIGHT_AT_NIGHT = true;
 const NIGHT_STARTS = 19;
 const NIGHT_ENDS = 7;
 
@@ -53,11 +53,20 @@ export function detectVisitor(): Visitor {
   // iPads now pretend to be Macs, but Macs don't have touch screens.
   const isIpad = /iPad/.test(ua) || (/Macintosh/.test(ua) && touch);
 
+  // Computers say so in their user agent: Windows, Mac, Chromebook (CrOS),
+  // Linux desktops (X11). Lots of laptops have touchscreens, so touch alone
+  // doesn't mean phone or tablet: a Windows touchscreen laptop is a computer.
+  const isComputer = !isIpad && /Windows NT|Macintosh|CrOS|X11/.test(ua);
+
   let device: Device = "desk";
-  if (/iPhone|iPod/.test(ua) || /Android.+Mobile/.test(ua) || (touch && Math.min(w, h) < 600)) {
+  if (/iPhone|iPod/.test(ua) || /Android.+Mobile/.test(ua)) {
     device = "phone";
-  } else if (isIpad || /Android|Tablet/.test(ua) || (touch && Math.max(w, h) <= 1400)) {
+  } else if (isIpad || /Android|Tablet/.test(ua)) {
     device = "tablet";
+  } else if (touch && !isComputer) {
+    // The user agent didn't say what it is: guess from the screen size
+    if (Math.min(w, h) < 600) device = "phone";
+    else if (Math.max(w, h) <= 1400) device = "tablet";
   }
 
   const dockStyle: DockStyle = /Windows/.test(ua) ? "bar" : "dock";

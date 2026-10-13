@@ -1,0 +1,78 @@
+/* src/app/brand-fonts.css
+
+   The brand font candidates (which one is used: src/lib/brand-font.ts).
+   Their files live in public/fonts/, named after the font's id.
+
+   Why the names start with "SD ": if you also install a font on your computer
+   (double-clicking it in Windows), a plain name like "Knewave" could quietly
+   use YOUR installed copy even when the file here is missing, so it would look
+   fine to you and broken to everyone else. A name only this site uses means
+   what you see is exactly what visitors get.
+
+   font-display: swap shows Anton straight away and swaps the font in once it
+   has loaded, so text never stays invisible while a font downloads.
+
+   A font is only downloaded when something on the page actually uses it, so
+   listing lots here costs visitors nothing. */
+
+/* ---- Free for any use, including the live site and the logo ----
+   From Google Fonts, under the SIL Open Font Licence (Permanent Marker:
+   Apache 2.0). Each one's licence is in public/fonts/licences/ and has to stay
+   there alongside the font. .woff2 is the small, web-ready format. */
+
+@font-face {
+  font-family: "SD Knewave"; /* by Tyler Finck */
+  src: url("/fonts/knewave.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Protest Revolution"; /* by Octavio Pardo */
+  src: url("/fonts/protest.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Kaushan Script"; /* by Pablo Impallari */
+  src: url("/fonts/kaushan.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Sedgwick Ave Display"; /* by the Sedgwick Ave Project Authors */
+  src: url("/fonts/sedgwick.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Permanent Marker"; /* by Font Diner */
+  src: url("/fonts/marker.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Mansalva"; /* by Carolina Short */
+  src: url("/fonts/mansalva.woff2") format("woff2");
+  font-display: swap;
+}
+
+/* ---- Personal use only: fine to compare against on your computer, NOT for the live site ----
+   You download these yourself into public/fonts/ (they're kept out of Git). */
+
+@font-face {
+  font-family: "SD Bockley";
+  src: url("/fonts/bockley.otf");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Paperbreak";
+  src: url("/fonts/paperbreak.otf");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SD Neoradical";
+  src: url("/fonts/neoradical.otf");
+  font-display: swap;
+}

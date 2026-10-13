@@ -20,17 +20,31 @@
 
 import type { Device, DockStyle } from "./detect";
 
+// Mac-style dock magnification: when the cursor reaches the dock, the icons
+// near it grow (from their bottom edge) and spread apart a little.
+// By distance from our app: [ours, next to it, two away, three away].
+//   scale   how much each icon grows
+//   spread  how far it moves away from ours, in px
+// HomeScreen.tsx applies these, and the launch below starts from our icon's grown size.
+export const DESK_MAGNIFY = { scale: [1.28, 1.12, 1.04, 1], spread: [0, 5, 7, 8] };
+
 // Dock sizes per device. The CSS reads these too (--I, --dockH, --dockB),
-// so the dock always matches the maths.
+// so the dock always matches the maths. magnify: how big our icon is when it's
+// tapped (only the Mac-style dock magnifies).
 const DOCKS = {
-  phone: { icon: 60, radius: 14, height: 88, bottom: 10 },
-  tablet: { icon: 72, radius: 17, height: 100, bottom: 14 },
-  deskDock: { icon: 54, radius: 13, height: 72, bottom: 10 },
-  deskBar: { icon: 34, radius: 8, height: 52, bottom: 0 },
+  phone: { icon: 60, radius: 14, height: 108, bottom: 8, magnify: 1 },
+  tablet: { icon: 68, radius: 16, height: 100, bottom: 14, magnify: 1 },
+  deskDock: { icon: 54, radius: 13, height: 72, bottom: 10, magnify: DESK_MAGNIFY.scale[0] },
+  deskBar: { icon: 34, radius: 8, height: 52, bottom: 0, magnify: 1 },
 };
 
 // When you force a device with ?device= on a bigger screen, it's shown in a frame this size.
 const PREVIEW_SIZES = { phone: [390, 844], tablet: [1180, 820] } as const;
+
+// How round each device's screen corners are, so the light (EdgeLight.tsx)
+// hugs them instead of drawing a square box. Phones ~ an iPhone's curve,
+// tablets ~ an iPad's, computers ~ a browser window's corners.
+const EDGE_RADIUS = { phone: 46, tablet: 20, desk: 10 } as const;
 
 export type Geometry = {
   W: number; // screen width
@@ -38,6 +52,7 @@ export type Geometry = {
   k: number; // preview scale (1 on a real device)
   framed: boolean;
   frameRadius: number;
+  edgeRadius: number; // how round the screen's corners are (for the light)
   icon: number;
   iconRadius: number;
   dockH: number;
@@ -49,6 +64,7 @@ export type Geometry = {
   insetLeft: number;
   insetRadius: number;
   titleW: number;
+  titleH: number;
   titleX: number;
   titleY: number;
   logoX: number;
@@ -58,7 +74,9 @@ export type Geometry = {
   headerH: number;
 };
 
-export function computeGeometry(device: Device, dockStyle: DockStyle, forced: boolean): Geometry {
+// wordRatio: the title's width / height in the brand font (measured: see brand-font.ts).
+// Anton's STREAMERDRAFT is about 5; a script font's is smaller (shorter and taller).
+export function computeGeometry(device: Device, dockStyle: DockStyle, forced: boolean, wordRatio = 5): Geometry {
   const winW = window.innerWidth;
   const winH = window.innerHeight;
 
@@ -81,32 +99,39 @@ export function computeGeometry(device: Device, dockStyle: DockStyle, forced: bo
     : DOCKS.deskDock;
   const Y = H - dock.bottom - dock.height / 2;
 
-  // 1. App opening out of its icon
-  const launchScale = dock.icon / Math.min(W, H);
+  // 1. App opening out of its icon, at the size it is when it's tapped.
+  // A magnified icon grows from its bottom edge, so its centre rises.
+  const tappedIcon = dock.icon * dock.magnify;
+  const tappedY = Y - (tappedIcon - dock.icon) / 2;
+  const launchScale = tappedIcon / Math.min(W, H);
   const insetTop = H > W ? (H - W) / 2 : 0;
   const insetLeft = W > H ? (W - H) / 2 : 0;
 
-  // 2. Title: big in the middle, then docked top left as the logo
-  const titleW = Math.min(W * (device === "phone" ? 0.84 : 0.7), 900);
-  const titleH = titleW * 0.2;
+  // 2. Title: big in the middle, then docked top left as the logo.
+  // Sized by width, but never taller than 30% of the screen (a tall script font
+  // would otherwise fill it), and the logo never taller than the header allows.
+  const titleW = Math.min(W * (device === "phone" ? 0.84 : 0.7), 900, H * 0.3 * wordRatio);
+  const titleH = titleW / wordRatio;
   const pad = device === "phone" ? 20 : device === "tablet" ? 28 : 32;
   const headerH = device === "phone" ? 64 : 76;
-  const logoW = device === "phone" ? 150 : device === "tablet" ? 168 : 180;
+  const logoW = Math.min(device === "phone" ? 150 : device === "tablet" ? 168 : 180, (headerH - 20) * wordRatio);
   const contentLeft = Math.max(0, (W - 1120) / 2) + pad; // page content is max 1120px wide
 
   return {
     W, H, k, framed, frameRadius,
+    edgeRadius: framed ? frameRadius : EDGE_RADIUS[device],
     icon: dock.icon, iconRadius: dock.radius, dockH: dock.height, dockB: dock.bottom, Y,
     launchScale,
-    launchDy: Y - H / 2,
+    launchDy: tappedY - H / 2,
     insetTop,
     insetLeft,
-    insetRadius: dock.radius / launchScale,
+    insetRadius: (dock.radius * dock.magnify) / launchScale,
     titleW,
+    titleH,
     titleX: (W - titleW) / 2,
     titleY: (H - titleH) / 2 - H * 0.02,
     logoX: contentLeft,
-    logoY: (headerH - logoW * 0.2) / 2,
+    logoY: (headerH - logoW / wordRatio) / 2,
     logoScale: logoW / titleW,
     pad,
     headerH,
@@ -114,8 +139,7 @@ export function computeGeometry(device: Device, dockStyle: DockStyle, forced: bo
 }
 
 // Turns the geometry into CSS custom properties for the root element's style.
-// a0 = where the light was on the button's ring when it was tapped (so it carries on from there).
-export function geometryVars(g: Geometry, a0: number): Record<string, string> {
+export function geometryVars(g: Geometry): Record<string, string> {
   const px = (n: number) => `${Math.round(n * 100) / 100}px`;
   return {
     "--W": px(g.W),
@@ -133,6 +157,7 @@ export function geometryVars(g: Geometry, a0: number): Record<string, string> {
     "--il": px(g.insetLeft),
     "--ir": px(g.insetRadius),
     "--ww": px(g.titleW),
+    "--wh": px(g.titleH),
     "--cx": px(g.titleX),
     "--cy": px(g.titleY),
     "--kx": px(g.logoX),
@@ -140,6 +165,5 @@ export function geometryVars(g: Geometry, a0: number): Record<string, string> {
     "--ks": g.logoScale.toFixed(4),
     "--pad": px(g.pad),
     "--hh": px(g.headerH),
-    "--a0": `${a0}deg`,
   };
 }

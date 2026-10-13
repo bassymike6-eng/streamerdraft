@@ -2,15 +2,16 @@
 //
 // WHAT THIS IS
 // The F1 intro, start to finish:
-//   black screen + play button -> the light laps the screen edge -> home screen
-//   -> our app opens out of its icon -> browser loads -> STREAMERDRAFT
-//   -> it docks top left -> the page's loading placeholders.
+//   black screen + play button -> the red light grows out to the screen edge
+//   -> home screen -> our app opens out of its icon -> browser loads
+//   -> STREAMERDRAFT -> it docks top left -> the page's loading placeholders.
 //
 // HOW IT'S BUILT
 // This file only keeps track of WHERE we are (the phase) and WHAT the visitor
-// is on. All the movement is CSS (LaunchIntro.module.css), driven by:
+// is on. The movement is CSS (LaunchIntro.module.css), driven by:
 //   - data attributes on the root (data-dev, data-look, data-on="tap fill ...")
 //   - CSS custom properties from geometry.ts (sizes and positions)
+// except the red light, which EdgeLight.tsx draws frame by frame.
 // The running order and timings are in timeline.ts.
 //
 // WHY "use client"
@@ -20,47 +21,59 @@
 
 import { Anton } from "next/font/google";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { BRAND_FONT, DEFAULT_WORD_BOX, fontStack, FONTS, isFontId, measureWord, titleText, type FontId, type WordBox } from "@/lib/brand-font";
 import { AppWindow } from "./AppWindow";
 import { applyUrlOverrides, detectVisitor, prefersReducedMotion, type Visitor } from "./detect";
 import { DevPanel } from "./DevPanel";
+import { EdgeLight } from "./EdgeLight";
 import { computeGeometry, geometryVars, type Geometry } from "./geometry";
 import { HomeScreen } from "./HomeScreen";
-import { GlyphDefs } from "./icons";
 import { SkeletonPage } from "./SkeletonPage";
-import { LaunchSound, type SoundName } from "./sound";
-import { IDLE_LAP_MS, PHASE_TIMES, reachedPhases, type Phase } from "./timeline";
+import { LaunchSound } from "./sound";
+import { homeVars, PHASE_TIMES, reachedPhases, type Phase } from "./timeline";
 import { Wordmark } from "./Wordmark";
 import styles from "./LaunchIntro.module.css";
 
+// Anton: the fallback under the brand font (and the brand font itself while BRAND_FONT is "anton")
 const anton = Anton({ weight: "400", subsets: ["latin"], variable: "--font-anton" });
 
 const SHOW_DEV_PANEL = process.env.NODE_ENV !== "production";
 
-// Which sound plays as each phase starts ("tap" plays on the click itself).
-const PHASE_SOUND: Partial<Record<Phase, SoundName>> = {
-  fill: "fill", home: "home", press: "press", launch: "launch", title: "title", dock: "dock",
-};
-
 type Setup = { visitor: Visitor; geometry: Geometry; now: Date };
 
-function makeSetup(visitor: Visitor): Setup {
-  return { visitor, geometry: computeGeometry(visitor.device, visitor.dockStyle, visitor.forced), now: new Date() };
+// The brand font being shown, and how the title is written in it
+export type FontPick = { id: FontId; text: string };
+
+// The title's measured shape in that font (and whether its file loaded)
+type Word = { box: WordBox; loaded: boolean };
+
+// wordRatio: the title's width / height in the brand font (see the measuring below)
+function geometryFor(v: Visitor, wordRatio: number) {
+  return computeGeometry(v.device, v.dockStyle, v.forced, wordRatio);
 }
 
-const two = (n: number) => String(n).padStart(2, "0");
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function makeSetup(visitor: Visitor, wordRatio: number): Setup {
+  return { visitor, geometry: geometryFor(visitor, wordRatio), now: new Date() };
+}
 
 export default function LaunchIntro() {
   // null until we're in the browser (the server can't know the visitor's device or clock)
   const [setup, setSetup] = useState<Setup | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [a0, setA0] = useState(0); // where the light was on the ring at the tap
   const [run, setRun] = useState(0); // bumping this restarts every animation from scratch
+  const [font, setFont] = useState<FontPick>({ id: BRAND_FONT, text: FONTS[BRAND_FONT].text });
+  const [word, setWord] = useState<Word>({ box: DEFAULT_WORD_BOX, loaded: true });
 
+  const root = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
-  const idleStart = useRef(0);
   const sound = useRef<LaunchSound | null>(null);
+  // The title's width / height in the brand font. A ref, so the size maths
+  // (done in effects and click handlers, not while rendering) always gets the latest one.
+  const wordRatio = useRef(DEFAULT_WORD_BOX.width / DEFAULT_WORD_BOX.height);
+
+const two = (n: number) => String(n).padStart(2, "0");
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -70,21 +83,57 @@ export default function LaunchIntro() {
   // ---- On load: work out the visitor, then keep the sizes right if the window changes ----
   useEffect(() => {
     const visitor = applyUrlOverrides(detectVisitor(), window.location.search);
-    idleStart.current = performance.now();
+    // Testing fonts: ?font=paperbreak and ?case=caps|mixed (the Dev panel writes these)
+    const params = new URLSearchParams(window.location.search);
+    const fontParam = params.get("font");
+    const caseParam = params.get("case");
     // Deferred one frame so React renders the plain black screen first.
     const frame = requestAnimationFrame(() => {
-      setSetup(makeSetup(visitor));
+      setSetup(makeSetup(visitor, wordRatio.current));
       if (prefersReducedMotion()) setPhase("done");
+      if (isFontId(fontParam) || caseParam) {
+        const id = isFontId(fontParam) ? fontParam : BRAND_FONT;
+        setFont({ id, text: titleText(id, caseParam) });
+      }
     });
-    return () => cancelAnimationFrame(frame);
+    // Download and decode the sounds while the visitor's on the play button
+    // (a moment after the page shows, so they don't slow the first paint).
+    const preload = window.setTimeout(() => {
+      if (prefersReducedMotion()) return; // no intro, so no sounds
+      sound.current ??= new LaunchSound();
+      sound.current.preload();
+    }, 300);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(preload);
+    };
   }, []);
 
   useEffect(() => {
     if (!setup) return;
-    const onResize = () => setSetup((s) => (s ? { ...s, geometry: computeGeometry(s.visitor.device, s.visitor.dockStyle, s.visitor.forced) } : s));
+    const onResize = () => setSetup((s) => (s ? { ...s, geometry: geometryFor(s.visitor, wordRatio.current) } : s));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [setup]);
+
+  // ---- Measure the title in the brand font, whenever the font or its text changes ----
+  // Waits for the font file to load first. Then the title's box and the size
+  // maths both use the real shape of the word (see brand-font.ts).
+  useEffect(() => {
+    if (!root.current) return;
+    let cancelled = false;
+    // The font-family list as the browser resolved it (a canvas can't read CSS variables)
+    const stack = getComputedStyle(root.current).getPropertyValue("--font-display").trim();
+    measureWord(stack, FONTS[font.id].family, font.text).then((result) => {
+      if (cancelled) return;
+      wordRatio.current = result.box.width / result.box.height;
+      setWord(result);
+      setSetup((s) => (s ? { ...s, geometry: geometryFor(s.visitor, wordRatio.current) } : s));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [font]);
 
   // Clean up timers and sound if the component goes away.
   useEffect(() => () => {
@@ -102,14 +151,12 @@ export default function LaunchIntro() {
     const visitor = setup?.visitor ?? applyUrlOverrides(detectVisitor(), window.location.search);
 
     // Sound has to start inside the click, or the browser blocks it.
+    // Each scene's sounds are in soundCues.ts.
     sound.current ??= new LaunchSound();
     sound.current.start();
-    sound.current.play("tap");
+    sound.current.cue("tap", visitor.device);
 
-    // Carry the light on from wherever it is on the ring right now.
-    const lapsSoFar = (performance.now() - idleStart.current) / IDLE_LAP_MS;
-    setA0(Math.round((lapsSoFar % 1) * 360));
-    setSetup(makeSetup(visitor)); // fresh sizes and clock
+    setSetup(makeSetup(visitor, wordRatio.current)); // fresh sizes and clock
     setPhase("tap");
 
     clearTimers();
@@ -117,8 +164,7 @@ export default function LaunchIntro() {
       timers.current.push(
         window.setTimeout(() => {
           setPhase(next);
-          const name = PHASE_SOUND[next];
-          if (name) sound.current?.play(name);
+          sound.current?.cue(next, visitor.device);
         }, at * 1000)
       );
     }
@@ -126,19 +172,26 @@ export default function LaunchIntro() {
 
   const skip = () => {
     clearTimers();
+    sound.current?.stop(); // a quick fade, not a hard cut
     setPhase("done");
   };
 
   const replay = useCallback(() => {
     clearTimers();
-    idleStart.current = performance.now();
+    sound.current?.stop();
     setRun((r) => r + 1);
     setPhase("idle");
   }, []);
 
   // Dev panel: switch device / look / source, then start again.
   const changeVisitor = (visitor: Visitor) => {
-    setSetup(makeSetup(visitor));
+    setSetup(makeSetup(visitor, wordRatio.current));
+    replay();
+  };
+
+  // Dev panel: try another font (it's measured, then the intro starts again)
+  const changeFont = (pick: FontPick) => {
+    setFont(pick);
     replay();
   };
 
@@ -146,10 +199,17 @@ export default function LaunchIntro() {
   const visitor = setup?.visitor;
   const geometry = setup?.geometry;
   const now = setup?.now;
-  const vars = (geometry ? geometryVars(geometry, a0) : {}) as CSSProperties;
+  // The brand font and the home screen's beat timings (always), plus every
+  // size and position (once we're in the browser)
+  const vars = {
+    "--font-display": fontStack(font.id),
+    ...homeVars(),
+    ...(geometry ? geometryVars(geometry) : {}),
+  } as CSSProperties;
 
   return (
     <div
+      ref={root}
       className={`${styles.root} ${anton.variable}`}
       data-dev={visitor?.device ?? "phone"}
       data-dock={visitor?.dockStyle ?? "dock"}
@@ -160,24 +220,22 @@ export default function LaunchIntro() {
       data-on={reachedPhases(phase)}
       style={vars}
     >
-      <GlyphDefs />
-
       <div key={run} className={styles.screen}>
         {visitor && now && (
           <>
             <HomeScreen
               device={visitor.device}
+              wide={geometry ? geometry.W > geometry.H : false}
               clock={`${two(now.getHours())}:${two(now.getMinutes())}`}
-              dateLong={`${DAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`}
-              dateShort={`${DAYS[now.getDay()].slice(0, 3)} ${now.getDate()} ${MONTHS[now.getMonth()].slice(0, 3)}`}
+              dateShort={`${DAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`}
             />
             <div className={styles.touch} aria-hidden="true" />
             <div className={styles.cursor} aria-hidden="true">
               <svg viewBox="0 0 22 28"><path d="M2 2 L2 23 L7.5 17.8 L11.4 26 L15 24.4 L11.2 16.4 L19 16.2 Z" fill="#fff" stroke="#111" strokeWidth="1.6" strokeLinejoin="round" /></svg>
             </div>
             <AppWindow />
-            <SkeletonPage />
-            <Wordmark />
+            <SkeletonPage running={phase === "dock" || phase === "done"} />
+            <Wordmark text={font.text} box={word.box} />
           </>
         )}
 
@@ -187,16 +245,11 @@ export default function LaunchIntro() {
             screen-reader users already have the real button. */}
         <div className={styles.tapLayer} onClick={play} aria-hidden="true" />
 
-        {/* The light: round the play button first, then round the whole screen */}
-        <div className={styles.halo} aria-hidden="true">
-          <span className={`${styles.ring} ${styles.ringSoft}`} />
-          <span className={`${styles.ring} ${styles.ringCore}`} />
-          <span className={`${styles.ring} ${styles.ringFullSoft}`} />
-          <span className={`${styles.ring} ${styles.ringFull}`} />
-        </div>
+        {/* The red light: round the play button first, then round the whole screen */}
+        <EdgeLight phase={phase} edgeRadius={geometry?.edgeRadius ?? 0} />
 
         <button className={styles.go} type="button" aria-label="Play intro" onClick={play}>
-          <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M10 6.5v17a1.2 1.2 0 0 0 1.8 1l13-8.5a1.2 1.2 0 0 0 0-2l-13-8.5a1.2 1.2 0 0 0-1.8 1z" fill="#fff" /></svg>
+          <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M10 6.5v17a1.2 1.2 0 0 0 1.8 1l13-8.5a1.2 1.2 0 0 0 0-2l-13-8.5a1.2 1.2 0 0 0-1.8 1z" fill="currentColor" /></svg>
         </button>
         <p className={styles.hint}>Tap to start</p>
 
@@ -204,7 +257,9 @@ export default function LaunchIntro() {
         <button className={styles.replay} type="button" onClick={replay}>Replay</button>
       </div>
 
-      {SHOW_DEV_PANEL && visitor && <DevPanel visitor={visitor} onChange={changeVisitor} />}
+      {SHOW_DEV_PANEL && visitor && (
+        <DevPanel visitor={visitor} onChange={changeVisitor} font={font} fontLoaded={word.loaded} onFont={changeFont} />
+      )}
     </div>
   );
 }

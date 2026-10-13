@@ -4,10 +4,15 @@
 // A little panel (top left, only in `npm run dev`, never on the live site)
 // for switching between the versions of the intro while we work on it, like
 // the Tweaks panel on the design canvas. It also writes your choice into the
-// URL (?device=...&look=...&source=...), so a refresh keeps it.
+// URL (?device=...&look=...&source=...&font=...&case=...), so a refresh keeps it.
+//
+// Font: tries each brand font candidate (src/lib/brand-font.ts). If a font's
+// file isn't in public/fonts/ yet, it says so here, and you'll see Anton instead.
 
 import { useState } from "react";
+import { BRAND_FONT, FONTS, titleText, type FontId } from "@/lib/brand-font";
 import type { Visitor } from "./detect";
+import type { FontPick } from "./LaunchIntro";
 import styles from "./LaunchIntro.module.css";
 
 type DeviceChoice = "phone" | "tablet" | "desk-dock" | "desk-bar";
@@ -23,8 +28,15 @@ function syncUrl(key: string, value: string) {
   window.history.replaceState(null, "", `?${params}`);
 }
 
-export function DevPanel({ visitor, onChange }: { visitor: Visitor; onChange: (v: Visitor) => void }) {
+export function DevPanel({ visitor, onChange, font, fontLoaded, onFont }: {
+  visitor: Visitor;
+  onChange: (v: Visitor) => void;
+  font: FontPick;
+  fontLoaded: boolean; // false = the font's file wasn't found
+  onFont: (pick: FontPick) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const casing = font.text === font.text.toUpperCase() ? "caps" : "mixed";
 
   if (!open) {
     return (
@@ -82,6 +94,45 @@ export function DevPanel({ visitor, onChange }: { visitor: Visitor; onChange: (v
           <option value="social">Social app</option>
         </select>
       </label>
+      <label>
+        Font
+        <select
+          value={font.id}
+          onChange={(e) => {
+            const id = e.target.value as FontId;
+            syncUrl("font", id);
+            const params = new URLSearchParams(window.location.search);
+            params.delete("case"); // a new font starts in its own default case
+            window.history.replaceState(null, "", `?${params}`);
+            onFont({ id, text: titleText(id, null) });
+          }}
+        >
+          {(Object.keys(FONTS) as FontId[]).map((id) => (
+            <option key={id} value={id}>{FONTS[id].label}{id === BRAND_FONT ? " (in use)" : ""}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Case
+        <select
+          value={casing}
+          onChange={(e) => {
+            syncUrl("case", e.target.value);
+            onFont({ id: font.id, text: titleText(font.id, e.target.value) });
+          }}
+        >
+          <option value="caps">STREAMERDRAFT</option>
+          <option value="mixed">StreamerDraft</option>
+        </select>
+      </label>
+      {!fontLoaded && (
+        <p className={styles.devWarn}>
+          Can&apos;t find this font&apos;s file in public/fonts, so this is Anton. Check the file&apos;s name and folder.
+        </p>
+      )}
+      {!FONTS[font.id].free && (
+        <p className={styles.devWarn}>Personal use only: fine for comparing, not for the live site.</p>
+      )}
       <button type="button" onClick={() => onChange(visitor)}>Replay</button>
       <button type="button" onClick={() => setOpen(false)}>Close</button>
     </div>
