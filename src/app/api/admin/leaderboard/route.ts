@@ -4,7 +4,8 @@
 // The FULL leaderboard, for picking the winner (admin only):
 //   GET http://localhost:3000/api/admin/leaderboard
 //
-// Unlike the public top 10, this lists EVERYONE with a recruit, with:
+// The ONLY leaderboard: the public site doesn't show one (the winner's
+// revealed live on stream). It lists EVERYONE with a recruit, with:
 //   rank               only for eligible people with 1+ counted recruit
 //   reachedAt          when they hit their current count (the tie-break)
 //   flaggedRecruits    how many of their recruits have a red flag

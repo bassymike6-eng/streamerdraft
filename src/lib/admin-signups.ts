@@ -6,14 +6,15 @@
 //   getSignupDetail()    one person: details, their recruits, who shares their IP
 //   setDisqualified()    disqualify / reinstate someone
 //   setNote()            your private note on someone
-//   setScoutApproved()   approve / un-approve a scout's application
+//   setScoutChecked()    mark a scout as checked ("Looks good"), or not
+//   setScoutTurnedDown() turn a scout down (they're emailed), or undo it
 //   deleteSignup()       remove someone completely (e.g. "delete my data" requests)
 //   getAdminLeaderboard() the FULL leaderboard, with the extra info to pick a winner
 //   getFlags()           all the red flags, grouped
 //   getExportRows()      every sign-up, for the CSV download
 //
-// It all reads from the admin_signups view (migrations 005 + 006), which
-// already has the recruit counts, red flags and scout answers worked out.
+// It all reads from the admin_signups view (migration 005), which already
+// has the recruit counts and red flags worked out.
 
 import "server-only";
 import { db } from "@/lib/db";
@@ -28,7 +29,8 @@ const PERSON_COLUMNS = `
   id::int AS id, role, email, display_name AS "displayName",
   platform, channel_url AS "channelUrl", stream_category AS "streamCategory",
   platform_urls AS "platformUrls", audience_size AS "audienceSize", content_types AS "contentTypes",
-  marketing_opt_in AS "marketingOptIn", based_in_uk AS "basedInUk", ip_country AS "ipCountry",
+  marketing_opt_in AS "marketingOptIn", based_in_uk AS "basedInUk", uk_eligible AS "ukEligible",
+  ip_country AS "ipCountry", confirm_ip_country AS "confirmIpCountry",
   left(ip_hash, 10) AS "ipFingerprint", ip_group_size AS "ipGroupSize",
   referral_code AS "referralCode", number, feedback,
   created_at AS "createdAt", confirmed_at AS "confirmedAt", rules_accepted_at AS "rulesAcceptedAt",
@@ -38,9 +40,12 @@ const PERSON_COLUMNS = `
   recruiter_id::int AS "recruiterId", recruiter_name AS "recruiterName", recruiter_code AS "recruiterCode",
   recruits_counted AS "recruitsCounted", recruits_pending AS "recruitsPending",
   recruits_outside_uk AS "recruitsOutsideUk", recruits_total AS "recruitsTotal",
-  scout_offers AS "scoutOffers", scout_hours AS "scoutHours", scout_pitch AS "scoutPitch",
+  scout_offers AS "scoutOffers", scout_offer_other AS "scoutOfferOther",
+  scout_weeks AS "scoutWeeks", scout_hours AS "scoutHours", scout_pitch AS "scoutPitch",
   commitment_accepted_at AS "commitmentAcceptedAt",
-  scout_approved AS "scoutApproved", scout_approved_at AS "scoutApprovedAt",
+  scout_checked AS "scoutChecked", scout_checked_at AS "scoutCheckedAt",
+  scout_turned_down AS "scoutTurnedDown", scout_turned_down_at AS "scoutTurnedDownAt",
+  scout_turned_down_reason AS "scoutTurnedDownReason",
   flagged,
   flag_shared_ip AS "flagSharedIp", flag_same_ip_as_recruiter AS "flagSameIpAsRecruiter",
   flag_uk_mismatch AS "flagUkMismatch", flag_tor AS "flagTor", flag_recruit_burst AS "flagRecruitBurst"
@@ -50,7 +55,7 @@ const PERSON_COLUMNS = `
 export type SignupFilters = {
   search?: string; // matches email, name or recruit code
   role?: "prospect" | "scout";
-  status?: "confirmed" | "unconfirmed" | "eligible" | "disqualified" | "approved" | "awaiting_approval";
+  status?: "confirmed" | "unconfirmed" | "eligible" | "disqualified" | "scout_new" | "scout_checked" | "scout_turned_down";
   uk?: "yes" | "no";
   flagged?: "yes";
   sort: "newest" | "oldest" | "recruits" | "name";
@@ -73,8 +78,10 @@ const STATUS_RULES = {
   unconfirmed: "NOT confirmed",
   eligible: "eligible",
   disqualified: "disqualified",
-  approved: "scout_approved", // scouts you've approved
-  awaiting_approval: "role = 'scout' AND NOT scout_approved AND NOT disqualified", // scouts to review
+  // scouts: new ones you haven't looked at yet, ones you've checked, ones you've turned down
+  scout_new: "role = 'scout' AND NOT scout_checked AND NOT scout_turned_down AND NOT disqualified",
+  scout_checked: "role = 'scout' AND scout_checked AND NOT scout_turned_down",
+  scout_turned_down: "role = 'scout' AND scout_turned_down",
 } as const;
 
 export async function listSignups(filters: SignupFilters) {
@@ -96,7 +103,8 @@ export async function listSignups(filters: SignupFilters) {
   }
   if (filters.role) conditions.push(`role = ${param(filters.role)}`);
   if (filters.status) conditions.push(STATUS_RULES[filters.status]);
-  if (filters.uk) conditions.push(filters.uk === "yes" ? "based_in_uk" : "NOT based_in_uk");
+  // "UK" = uk_eligible (ticked the box AND a UK IP, migration 007), the same rule the competition uses
+  if (filters.uk) conditions.push(filters.uk === "yes" ? "uk_eligible" : "NOT uk_eligible");
   if (filters.flagged) conditions.push("flagged");
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -126,8 +134,15 @@ export async function listSignups(filters: SignupFilters) {
 
 // ── 2. One person in full ───────────────────────────────────────────
 export async function getSignupDetail(id: number) {
-  const person = (await db.query(`SELECT ${PERSON_COLUMNS}, ip_hash FROM admin_signups WHERE id = $1`, [id]))
-    .rows[0];
+  // (unsubscribed_at isn't in the view: migration 009 says why, so it's read from signups)
+  const person = (
+    await db.query(
+      `SELECT ${PERSON_COLUMNS}, ip_hash,
+         (SELECT s.unsubscribed_at FROM signups s WHERE s.id = admin_signups.id) AS "unsubscribedAt"
+       FROM admin_signups WHERE id = $1`,
+      [id]
+    )
+  ).rows[0];
   if (!person) return null;
 
   // Run the two follow-up lookups at the same time.
@@ -170,21 +185,45 @@ export async function setNote(id: number, note: string) {
   return result.rowCount === 1;
 }
 
-// Scouts only. Returns "ok", "not_found", or "not_scout" (prospects don't get approved).
-export async function setScoutApproved(id: number, approved: boolean) {
+// Scouts only. Each returns "ok", "not_found", or "not_scout" (streamers
+// aren't scouts, so there's nothing to check or turn down).
+async function scoutOutcome(rowCount: number | null, id: number) {
+  if (rowCount === 1) return "ok" as const;
+  // Nothing changed: work out why, so the dashboard can say something useful
+  const exists = await db.query("SELECT 1 FROM signups WHERE id = $1", [id]);
+  return exists.rows.length === 0 ? ("not_found" as const) : ("not_scout" as const);
+}
+
+// "Looks good": only a tick for you, so you know who you've looked at.
+// (Scouts are scouts from the moment they sign up; this changes nothing for them.)
+export async function setScoutChecked(id: number, checked: boolean) {
   const result = await db.query(
-    approved
-      ? // COALESCE keeps the ORIGINAL approval time if they were already approved
-        `UPDATE signups SET scout_approved_at = COALESCE(scout_approved_at, NOW())
-         WHERE id = $1 AND role = 'scout'`
-      : `UPDATE signups SET scout_approved_at = NULL WHERE id = $1 AND role = 'scout'`,
+    checked
+      ? // COALESCE keeps the FIRST time you ticked it
+        `UPDATE signups SET scout_checked_at = COALESCE(scout_checked_at, NOW()) WHERE id = $1 AND role = 'scout'`
+      : `UPDATE signups SET scout_checked_at = NULL WHERE id = $1 AND role = 'scout'`,
     [id]
   );
-  if (result.rowCount === 1) return "ok";
+  return scoutOutcome(result.rowCount, id);
+}
 
-  // Nothing changed: work out why, so the dashboard can say something useful.
-  const exists = await db.query("SELECT 1 FROM signups WHERE id = $1", [id]);
-  return exists.rows.length === 0 ? "not_found" : "not_scout";
+// Turned down: they won't be one of the scouts at launch. They stay in the
+// competition (that's about the competition rules, not scouting).
+// `wasAlready` says whether they'd been turned down before, so the route only
+// emails them the first time.
+export async function setScoutTurnedDown(id: number, turnedDown: boolean, reason?: string) {
+  const before = await db.query(
+    "SELECT scout_turned_down_at IS NOT NULL AS was FROM signups WHERE id = $1 AND role = 'scout'",
+    [id]
+  );
+  const result = await db.query(
+    turnedDown
+      ? `UPDATE signups SET scout_turned_down_at = COALESCE(scout_turned_down_at, NOW()), scout_turned_down_reason = $2
+         WHERE id = $1 AND role = 'scout'`
+      : `UPDATE signups SET scout_turned_down_at = NULL, scout_turned_down_reason = NULL WHERE id = $1 AND role = 'scout'`,
+    turnedDown ? [id, reason || null] : [id]
+  );
+  return { outcome: await scoutOutcome(result.rowCount, id), wasAlready: before.rows[0]?.was === true };
 }
 
 export async function deleteSignup(id: number) {
@@ -204,7 +243,7 @@ export async function getAdminLeaderboard() {
       ${PERSON_COLUMNS},
       -- When they reached their current count (for the tie-break)
       (SELECT MAX(x.confirmed_at) FROM signups x
-        WHERE x.referred_by_id = a.id AND x.based_in_uk
+        WHERE x.referred_by_id = a.id AND x.uk_eligible
           AND x.confirmed_at IS NOT NULL AND x.disqualified_at IS NULL) AS "reachedAt",
       -- How many of their recruits have a red flag
       (SELECT COUNT(*)::int FROM admin_signups x
@@ -289,7 +328,13 @@ export async function getFlags() {
 
 // ── 6. Everything, for the CSV download ─────────────────────────────
 export async function getExportRows() {
-  return (await db.query(`SELECT ${PERSON_COLUMNS} FROM admin_signups ORDER BY id`)).rows as Record<
+  return (
+    await db.query(
+      `SELECT ${PERSON_COLUMNS},
+         (SELECT s.unsubscribed_at FROM signups s WHERE s.id = admin_signups.id) AS "unsubscribedAt"
+       FROM admin_signups ORDER BY id`
+    )
+  ).rows as Record<
     string,
     unknown
   >[];

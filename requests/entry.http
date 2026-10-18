@@ -1,0 +1,96 @@
+# requests/entry.http
+#
+# WHAT THIS IS
+# The F2 sign-up flow, one request at a time: join, "where's my entry at?",
+# resend the email, look at the confirm link, confirm it, and open a
+# referral link. (The browser does all of this for real; this is for poking
+# at each step on its own.)
+#
+# HOW TO RUN IT
+# 1. Send 1. The dev server's terminal prints the email: copy the token from
+#    the link in it (the bit after confirm?token=) into @token below.
+# 2. Send the rest, top to bottom.
+#
+# Start again:  DELETE FROM signups WHERE email = 'flow@entry.example.com';
+
+@base = http://localhost:3000
+@token = PASTE_THE_TOKEN_FROM_THE_EMAIL_HERE
+
+### 1. Join as a streamer → expect 201, emailSent: true, and a statusKey
+# @name joined
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "flow@entry.example.com",
+  "displayName": "Flow",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 2. Where's my entry at? → expect status "pending", referralCode null
+# (only your own numbers: there's no public leaderboard)
+GET {{base}}/api/entry?key={{joined.response.body.$.statusKey}}
+
+### 3. Resend straight away → expect 429 "too_soon" (one email a minute)
+POST {{base}}/api/entry/resend
+Content-Type: application/json
+
+{ "key": "{{joined.response.body.$.statusKey}}" }
+
+### 4. Join again with the same email → expect 200 status "resent" and a NEW statusKey
+# (the one from test 1 stops working: test 2 would now say 404 "unknown")
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "flow@entry.example.com",
+  "displayName": "Flow",
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 5. Look at the confirm link (what the confirm page asks first) → expect status "ready"
+# (if you sent test 4 more than a minute after test 1, a new email went out:
+#  use the token from the NEWEST email)
+GET {{base}}/api/confirm?token={{token}}
+
+### 6. Confirm WITHOUT ticking the rules → expect 400 "rules_required"
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{token}}" }
+
+### 7. Confirm from a US IP (pretending to be Cloudflare) → expect 200, ukEligible: false
+# (ticked "I live in the UK", but no UK IP at sign-up or confirm: can't win)
+# To see the UK version instead, take the CF-IPCountry line out (or make it GB).
+POST {{base}}/api/confirm
+Content-Type: application/json
+CF-IPCountry: US
+
+{ "token": "{{token}}", "rulesAccepted": true }
+
+### 8. Confirm again → expect 200 status "already_confirmed" (same details, same #number)
+POST {{base}}/api/confirm
+Content-Type: application/json
+
+{ "token": "{{token}}", "rulesAccepted": true }
+
+### 9. Join again now they're confirmed → expect 409 "already_confirmed"
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "flow@entry.example.com",
+  "displayName": "Flow",
+  "ageConfirmed": true
+}
+
+### 10. A referral link that doesn't exist → expect 302 to "/" (no ?ref)
+GET {{base}}/r/zzzzzz
+
+### 11. The public stats → expect ONLY { ok, roadTo300 } (no names, no leaderboard)
+GET {{base}}/api/stats

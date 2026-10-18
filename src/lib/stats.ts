@@ -1,23 +1,31 @@
 // src/lib/stats.ts
 //
 // WHAT THIS IS
-// The numbers the site shows. Three questions, each answered by one SQL query:
-//   1. Road to 300: how many streamers have signed up so far?
-//   2. Recruit counts: for one person, how many recruits count, how many
-//      are still pending, and how many are outside the UK?
-//   3. Leaderboard: who are the top 10 recruiters?
+// The numbers the public site shows. Each answered by SQL:
+//   1. Road to 300: how many people are in so far (streamers and scouts)?
+//   2. One person's own entry (by their private key): pending or confirmed,
+//      in the UK or not, and how THEIR referrals are doing.
 //
-// THE RULES (from docs/PLAN.md)
-// - Road to 300 counts EVERY prospect sign-up: any country, confirmed or not.
-// - A recruit COUNTS once they've confirmed their email AND ticked "based in UK".
-//   Prospect or scout, both count.
-// - PENDING = ticked UK but hasn't confirmed yet (the recruiter can chase them).
+// NO PUBLIC LEADERBOARD (decided in F2)
+// The winner is revealed live on stream, so the site never shows who's
+// winning: no names, no ranks, nobody else's numbers. Each person only sees
+// their own referrals, and only with their private key. The full leaderboard
+// is admin-only (src/lib/admin-signups.ts: getAdminLeaderboard, for the F5
+// dashboard).
+//
+// THE RULES
+// - Road to 300 counts everyone who's CONFIRMED their email, streamers and
+//   scouts together, any country. It decides the prize: 300 or more by the
+//   close, the top referrer wins GTA 6; fewer, a £25 prize (the rules, Rules.tsx).
+// - "In the UK" is the uk_eligible column (migration 007): they ticked "based in
+//   the UK" AND an IP of theirs was in the UK (or we couldn't tell, e.g. local dev).
+// - A referral COUNTS once the person who used the link has confirmed their
+//   email AND is uk_eligible. Prospect or scout, both count.
+// - PENDING = uk_eligible but hasn't confirmed yet (the referrer can chase them).
 // - OUTSIDE UK = can join, but never counts. We still return the number so
 //   the page can explain why a friend isn't showing up as counted.
-// - Leaderboard: only confirmed, UK-based prospects (the people who can win)
-//   with at least 1 counted recruit. Same count? Whoever got there first ranks higher.
 // - DISQUALIFIED people (set from the admin dashboard) don't count anywhere:
-//   not in the 300, not as anyone's recruit, not on the leaderboard.
+//   not in the 300, and not as anyone's referral.
 //
 // ONE THING TO KNOW ABOUT COUNT
 // Postgres's COUNT() returns a "bigint" (a huge whole number). The pg driver
@@ -32,85 +40,64 @@ export const GOAL = 300;
 // ── 1. Road to 300 ──────────────────────────────────────────────────
 export async function getRoadTo300(): Promise<{ count: number; goal: number }> {
   const result = await db.query(
-    "SELECT COUNT(*)::int AS count FROM signups WHERE role = 'prospect' AND disqualified_at IS NULL"
+    `SELECT COUNT(*)::int AS count
+     FROM signups
+     WHERE confirmed_at IS NOT NULL AND disqualified_at IS NULL`
   );
   return { count: result.rows[0].count, goal: GOAL };
 }
 
-// ── 2. One person's recruit counts ──────────────────────────────────
+// ── 2. One person's own entry ───────────────────────────────────────
 export type RecruitCounts = {
-  counted: number; // confirmed + UK: these are the ones that count
-  pending: number; // UK but not confirmed yet
-  outsideUk: number; // signed up from outside the UK: never count
+  counted: number; // confirmed + in the UK: these are the ones that count
+  pending: number; // in the UK but not confirmed yet
+  outsideUk: number; // not in the UK: never count
 };
 
-// Looks the person up by their recruit code (the 6 characters in /r/abc123).
-// Returns null if no one has that code.
-export async function getRecruitCounts(referralCode: string): Promise<RecruitCounts | null> {
-  // r = the recruiter, x = the people they recruited.
-  // LEFT JOIN keeps the recruiter even when they have 0 recruits
-  // (a normal JOIN would drop them and we'd wrongly say "unknown code").
-  // "AND x.disqualified_at IS NULL" in the join leaves disqualified recruits out.
-  // FILTER (WHERE ...) = "only count the rows that match this".
-  // COUNT(x.id) skips the empty row LEFT JOIN makes when there are 0 recruits.
-  const result = await db.query(
-    `SELECT
-       COUNT(x.id) FILTER (WHERE x.based_in_uk AND x.confirmed_at IS NOT NULL)::int AS counted,
-       COUNT(x.id) FILTER (WHERE x.based_in_uk AND x.confirmed_at IS NULL)::int     AS pending,
-       COUNT(x.id) FILTER (WHERE NOT x.based_in_uk)::int                            AS outside_uk
-     FROM signups r
-     LEFT JOIN signups x ON x.referred_by_id = r.id AND x.disqualified_at IS NULL
-     WHERE r.referral_code = $1
-     GROUP BY r.id`,
-    [referralCode.toLowerCase()]
-  );
-
-  if (result.rows.length === 0) return null; // no one has this code
-
-  const row = result.rows[0];
-  return { counted: row.counted, pending: row.pending, outsideUk: row.outside_uk };
-}
-
-// ── 3. Leaderboard ──────────────────────────────────────────────────
-export type LeaderboardEntry = {
-  rank: number;
+export type EntryStatus = {
+  status: "pending" | "confirmed";
+  role: "prospect" | "scout";
   displayName: string;
-  recruits: number;
+  number: number | null; // their #number, once confirmed
+  ukEligible: boolean; // in the UK (by the rule above): can win, and their referrals can count
+  referralCode: string | null; // only once confirmed: that's when they get their link
+  referrals: RecruitCounts;
+  turnedDown: boolean; // scouts we've turned down as a scout (the dashboard): still in the competition
 };
 
-export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
-  // A normal JOIN (not LEFT) on purpose: people with 0 counted recruits
-  // have nothing to join to, so they drop out. That's the "1+ only" rule.
-  //
-  // reached_at = when their LATEST counted recruit confirmed, which is the
-  // moment they hit their current number. Sorting by it (earliest first)
-  // breaks ties: whoever reached the number first ranks higher.
-  // r.id is a last-resort tie-break so the order never shuffles.
-  const result = await db.query(
-    `SELECT
-       r.display_name,
-       COUNT(*)::int       AS recruits,
-       MAX(x.confirmed_at) AS reached_at
-     FROM signups r
-     JOIN signups x ON x.referred_by_id = r.id
-     WHERE r.role = 'prospect'
-       AND r.confirmed_at IS NOT NULL
-       AND r.based_in_uk
-       AND r.disqualified_at IS NULL
-       AND x.confirmed_at IS NOT NULL
-       AND x.based_in_uk
-       AND x.disqualified_at IS NULL
-     GROUP BY r.id, r.display_name
-     ORDER BY recruits DESC, reached_at ASC, r.id ASC
-     LIMIT $1`,
-    [limit]
+// Looks a person up by the scrambled copy of one of their private keys:
+//   status_key_hash     the key the sign-up gave the browser they joined from
+//   confirm_token_hash  the link in their email, which the confirm page keeps
+//                       as the key for the device they confirmed on (it stops
+//                       being replaced once they've confirmed, so it lasts)
+export async function getEntryStatus(keyHash: string): Promise<EntryStatus | null> {
+  // s = the person, x = the people who used their link.
+  // LEFT JOIN keeps them even with 0 referrals; FILTER (WHERE ...) counts
+  // only the rows that match; COUNT(x.id) skips the empty row LEFT JOIN makes.
+  const found = await db.query(
+    `SELECT s.role, s.display_name, s.number, s.uk_eligible, s.referral_code,
+            s.confirmed_at IS NOT NULL AS confirmed,
+            s.scout_turned_down_at IS NOT NULL AS turned_down,
+            COUNT(x.id) FILTER (WHERE x.uk_eligible AND x.confirmed_at IS NOT NULL)::int AS counted,
+            COUNT(x.id) FILTER (WHERE x.uk_eligible AND x.confirmed_at IS NULL)::int     AS pending,
+            COUNT(x.id) FILTER (WHERE NOT x.uk_eligible)::int                            AS outside_uk
+     FROM signups s
+     LEFT JOIN signups x ON x.referred_by_id = s.id AND x.disqualified_at IS NULL
+     WHERE s.status_key_hash = $1
+        OR (s.confirm_token_hash = $1 AND s.confirmed_at IS NOT NULL)
+     GROUP BY s.id`,
+    [keyHash]
   );
-
-  // Rows come back already sorted, so rank is just position + 1.
-  // We only send the name and count: never emails or codes.
-  return result.rows.map((row, index) => ({
-    rank: index + 1,
+  if (found.rows.length === 0) return null;
+  const row = found.rows[0];
+  return {
+    status: row.confirmed ? "confirmed" : "pending",
+    role: row.role,
     displayName: row.display_name,
-    recruits: row.recruits,
-  }));
+    number: row.number,
+    ukEligible: row.uk_eligible,
+    referralCode: row.confirmed ? row.referral_code : null,
+    referrals: { counted: row.counted, pending: row.pending, outsideUk: row.outside_uk },
+    turnedDown: row.turned_down,
+  };
 }

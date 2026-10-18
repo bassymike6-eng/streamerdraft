@@ -1,0 +1,125 @@
+/* src/components/page/Footer.module.css
+
+   The footer capsule (Footer.tsx). Same material as the page's grey boxes
+   (--capsule, --surface-edge), with the red light running round it.
+
+   ONE LINE, EVERYWHERE
+   The footer is its own "container", so it lays itself out by its OWN width,
+   not the screen's:
+     room for it all   © on the left, the pages, then the socials and Watch
+                       live pushed to the far end
+     not enough room   (phones) the capsule stays one line: Watch live first,
+                       then the rest slides along sideways inside it, with the
+                       edge fading where there's more, and the © at the very end.
+   Anything round inside it is concentric: the capsule is 56px tall on phones
+   with an 8px inset, so the 40px Watch live capsule's curve follows its curve. */
+
+.footer {
+  container-type: inline-size;
+  box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; flex-shrink: 0;
+  padding: 4px var(--pad, 20px) calc(clamp(10px, 2cqh - 4px, 18px) + env(safe-area-inset-bottom));
+}
+
+.bar {
+  position: relative; overflow: hidden; isolation: isolate;
+  border-radius: 999px; background: var(--capsule); box-shadow: var(--surface-edge); color: var(--ink);
+}
+.light { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
+.inside { display: flex; align-items: center; gap: 6px; min-height: 64px; padding: 10px 12px 10px 24px; }
+
+/* © first on wide screens (order -1), last on phones */
+.copy { order: -1; flex-shrink: 0; margin: 0 10px 0 0; font-size: 13.5px; color: var(--ink2); white-space: nowrap; }
+
+/* the one line: the two pages, the socials and Watch live */
+.row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+.docs, .socials { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.sound { margin-right: auto; } /* (pushes the socials and Watch live to the far end) */
+.divider { display: none; }
+
+/* every link: a quiet capsule that lights up a little under the pointer */
+.link {
+  display: inline-flex; align-items: center; gap: 5px; height: 40px; padding: 0 14px; border: 0; border-radius: 999px;
+  background: none; color: var(--ink); font-family: inherit; font-size: 14.5px; font-weight: 600; white-space: nowrap;
+  text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background-color .2s ease, transform .3s var(--press, ease);
+}
+.link:hover { background-color: var(--track, rgba(118, 118, 128, .2)); }
+.link:active { transform: scale(.96); }
+.link svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .55; }
+
+/* Sound on / off: a speaker icon, crossed out when off */
+.sound svg { width: 17px; height: 17px; opacity: 1; stroke-width: 1.7; }
+.sound[aria-pressed="false"] { color: var(--ink2); }
+
+/* Watch live: the one red thing in the footer, with a breathing dot.
+   First in the line (phones see it straight away); on wide screens, last. */
+.live {
+  order: 3; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; margin-left: 6px; padding: 0 16px 0 14px; border-radius: 999px;
+  background: var(--red); color: #fff; font-size: 14.5px; font-weight: 600; white-space: nowrap; text-decoration: none;
+  -webkit-tap-highlight-color: transparent; transition: background-color .2s ease, transform .3s var(--press, ease);
+}
+.live:hover { background: var(--red-hot); }
+.live:active { transform: scale(.96); }
+.live i { position: relative; width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+.live i::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid #fff; animation: ping 2.2s cubic-bezier(.2, .6, .3, 1) infinite; }
+
+:is(.link, .live):focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+
+/* the fades at the edges, only where there's more to see (Footer.tsx sets these) */
+.row[data-more-after] { mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.row[data-more-before] { mask-image: linear-gradient(to right, transparent, #000 40px); }
+.row[data-more-before][data-more-after] { mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+
+/* phones only (see below) */
+.short, .socialsButton { display: none; }
+.liveDot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 25%, transparent); }
+
+/* Not enough room for it all on one line (phones): the four things people
+   come to a footer for, spread evenly, and the rest in the Socials pop-up.
+   Nothing to scroll. */
+@container (max-width: 760px) {
+  .inside { min-height: 0; padding: 6px; }
+  .row { justify-content: space-between; gap: 2px; mask-image: none !important; }
+  .docs { display: contents; } /* (so all four spread out evenly) */
+  .live, .socials, .divider, .copy, .long { display: none; }
+  .short, .socialsButton { display: inline-flex; }
+  .sound { margin-right: 0; }
+  .link { padding: 0 14px; }
+  /* the speaker on its own (still says "Sound" to screen readers) */
+  .soundWord { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sound { padding: 0 12px; }
+  .sound svg { width: 20px; height: 20px; }
+  /* no socials at all: the © stays in the line instead */
+  .row[data-copy-inline] .copy { display: block; order: 9; margin: 0 14px 0 4px; font-size: 13px; }
+}
+
+/* ---- The Socials pop-up (phones) ---- */
+.sheet { display: flex; flex-direction: column; gap: 14px; }
+.sheetLive {
+  display: flex; align-items: center; justify-content: center; gap: 10px; height: 54px; border-radius: 999px;
+  background: var(--red); color: #fff; font-size: 16px; font-weight: 600; text-decoration: none;
+  -webkit-tap-highlight-color: transparent; transition: background-color .2s ease, transform .3s var(--press, ease);
+}
+.sheetLive:active { transform: scale(.97); }
+.sheetLive i { position: relative; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.sheetLive i::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid #fff; animation: ping 2.2s cubic-bezier(.2, .6, .3, 1) infinite; }
+/* the socials: one grouped list, like a settings screen */
+.sheetGroup { list-style: none; margin: 0; padding: 0; border-radius: 20px; background: var(--sheet-card, #2C2C2E); overflow: hidden; }
+.sheetGroup li + li .sheetRow::before { content: ""; position: absolute; top: 0; left: 18px; right: 0; border-top: 1px solid var(--sheet-line, rgba(128, 128, 128, .2)); }
+.sheetRow {
+  position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 0 20px;
+  color: var(--sheet-ink, var(--ink)); font-size: 16px; font-weight: 600; text-decoration: none; -webkit-tap-highlight-color: transparent;
+  transition: background-color .2s ease;
+}
+.sheetRow:active { background: var(--track, rgba(118, 118, 128, .2)); }
+@media (hover: hover) { .sheetRow:hover { background: var(--track, rgba(118, 118, 128, .2)); } }
+.sheetRow svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .55; }
+.sheetCopy { margin: 2px 0 0; text-align: center; font-size: 13px; color: var(--sheet-ink2, var(--ink2)); }
+:is(.sheetLive, .sheetRow):focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+
+@keyframes ping { 0% { transform: scale(.4); opacity: .9; } 70%, 100% { transform: scale(1.6); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .footer *, .footer *::after { animation: none !important; transition: none !important; }
+}

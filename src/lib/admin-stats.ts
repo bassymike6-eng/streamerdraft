@@ -4,14 +4,17 @@
 // The numbers behind the admin dashboard's cards and graphs:
 //   getOverview()  → the headline numbers (cards across the top)
 //   getCharts()    → data shaped ready for graphs (lines, bars, pies),
-//                    including what scouts can offer and their hours
+//                    including what scouts can offer and how long they'll
+//                    back a streamer for (4, 6 or 8 weeks)
 //
 // Everything here is read-only. Times are grouped by UK time
 // (Europe/London), so "today" means today in the UK, not in UTC.
 
 import "server-only";
 import { db } from "@/lib/db";
+import { CLOSES_AT } from "@/lib/competition";
 import { GOAL } from "@/lib/stats";
+import { getMailingCounts } from "@/lib/unsubscribe";
 
 // "What % is part of whole?", to 1 decimal place. 0 if whole is 0.
 function percent(part: number, whole: number): number {
@@ -39,16 +42,19 @@ export async function getOverview() {
         COUNT(*) FILTER (WHERE role = 'prospect' AND confirmed_at IS NOT NULL)::int AS prospects_confirmed,
         COUNT(*) FILTER (WHERE role = 'scout' AND confirmed_at IS NOT NULL)::int    AS scouts_confirmed,
         COUNT(*) FILTER (WHERE based_in_uk)::int                             AS uk,
+        -- ticked the UK box AND an IP of theirs was in the UK (migration 007)
+        COUNT(*) FILTER (WHERE uk_eligible)::int                             AS uk_verified,
         COUNT(*) FILTER (WHERE ip_country IS NOT NULL)::int                  AS country_known,
         COUNT(*) FILTER (WHERE referred_by_id IS NOT NULL)::int              AS referred,
         COUNT(*) FILTER (WHERE marketing_opt_in)::int                        AS marketing_opt_in,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS last_24h,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int   AS last_7d,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int  AS last_30d,
-        -- Road to 300: same rule as the public counter
-        COUNT(*) FILTER (WHERE role = 'prospect' AND disqualified_at IS NULL)::int AS road_count,
-        COUNT(*) FILTER (WHERE role = 'prospect' AND disqualified_at IS NULL
-                           AND created_at >= NOW() - INTERVAL '7 days')::int AS road_last_7d
+        -- Road to 300: same rule as the public counter (everyone confirmed,
+        -- streamers and scouts: 300 by the close decides GTA 6 vs the £25 prize)
+        COUNT(*) FILTER (WHERE disqualified_at IS NULL AND confirmed_at IS NOT NULL)::int AS road_count,
+        COUNT(*) FILTER (WHERE disqualified_at IS NULL
+                           AND confirmed_at >= NOW() - INTERVAL '7 days')::int AS road_last_7d
       FROM signups
     `)
   ).rows[0];
@@ -60,16 +66,27 @@ export async function getOverview() {
         COUNT(*) FILTER (WHERE eligible)::int     AS eligible,
         COUNT(*) FILTER (WHERE flagged)::int      AS flagged,
         COUNT(*) FILTER (WHERE disqualified)::int AS disqualified,
-        COUNT(*) FILTER (WHERE role = 'scout' AND scout_approved)::int AS scouts_approved,
-        COUNT(*) FILTER (WHERE role = 'scout' AND NOT scout_approved AND NOT disqualified)::int AS scouts_waiting
+        -- scouts: new ones you haven't looked at, ones you've checked, ones turned down
+        COUNT(*) FILTER (WHERE role = 'scout' AND NOT scout_checked AND NOT scout_turned_down AND NOT disqualified)::int AS scouts_new,
+        COUNT(*) FILTER (WHERE role = 'scout' AND scout_checked AND NOT scout_turned_down)::int AS scouts_checked,
+        COUNT(*) FILTER (WHERE role = 'scout' AND scout_turned_down)::int AS scouts_turned_down
       FROM admin_signups
     `)
   ).rows[0];
+
+  // Who'd get each email right now (src/lib/unsubscribe.ts)
+  const emailLists = await getMailingCounts();
 
   // At last week's pace, how many days until 300? (null = no sign-ups this week)
   const perDay = totals.road_last_7d / 7;
   const remaining = Math.max(GOAL - totals.road_count, 0);
   const projectedDaysToGoal = remaining === 0 ? 0 : perDay > 0 ? Math.ceil(remaining / perDay) : null;
+
+  // Against the close (src/lib/competition.ts): how long's left, how many a
+  // day it needs from here, and where last week's pace would land by then
+  const daysLeft = Math.max(0, (new Date(CLOSES_AT).getTime() - Date.now()) / 86_400_000);
+  const neededPerDay = remaining === 0 ? 0 : daysLeft > 0 ? Math.ceil((remaining / daysLeft) * 10) / 10 : null;
+  const projectedAtClose = Math.round(totals.road_count + perDay * daysLeft);
 
   return {
     signups: {
@@ -86,6 +103,7 @@ export async function getOverview() {
     uk: {
       ticked: totals.uk,
       notTicked: totals.all_signups - totals.uk,
+      verified: totals.uk_verified, // ticked AND a UK IP: these can win and count as referrals
       percentTicked: percent(totals.uk, totals.all_signups),
       countryKnown: totals.country_known,
     },
@@ -107,18 +125,25 @@ export async function getOverview() {
       count: totals.road_count,
       goal: GOAL,
       percent: percent(totals.road_count, GOAL),
-      prospectsLast7d: totals.road_last_7d,
+      last7d: totals.road_last_7d, // confirmed in the last 7 days (both roles)
+      perDay: Math.round(perDay * 10) / 10, // last week's pace, per day
       projectedDaysToGoal,
+      closesAt: CLOSES_AT,
+      daysLeft: Math.ceil(daysLeft), // 0 once it's closed
+      neededPerDay, // to reach 300 by the close (null once it's closed)
+      projectedAtClose, // the count at the close, if last week's pace keeps up
     },
     competition: {
-      eligibleEntrants: competition.eligible, // confirmed + UK + not disqualified prospects
+      eligibleEntrants: competition.eligible, // can win: confirmed, accepted the rules, UK, not disqualified (both roles)
       flagged: competition.flagged,
       disqualified: competition.disqualified,
     },
     scouts: {
-      approved: competition.scouts_approved,
-      awaitingApproval: competition.scouts_waiting, // applications for you to review
+      toCheck: competition.scouts_new, // signed up since you last looked
+      checked: competition.scouts_checked, // you've looked: "Looks good"
+      turnedDown: competition.scouts_turned_down,
     },
+    emailLists, // { launch, news, unsubscribed }: how many on each email list
   };
 }
 
@@ -126,10 +151,11 @@ export async function getOverview() {
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const AUDIENCE_ORDER = ["under_10k", "10k_50k", "50k_100k", "100k_plus"];
 const HOURS_ORDER = ["under_3", "3_5", "6_10", "10_plus"];
+const WEEKS_ORDER = ["4", "6", "8"];
 
 export async function getCharts(days: number) {
   // Each query is independent, so Promise.all runs them all at once.
-  const [daily, platform, audience, content, country, ukTick, category, hour, weekday, funnel, offers, hours] =
+  const [daily, platform, audience, content, country, ukTick, category, hour, weekday, funnel, offers, hours, weeks] =
     await Promise.all([
       // 1. Day by day, for line charts. generate_series makes one row per day,
       //    so days with 0 sign-ups still appear (as 0) instead of vanishing.
@@ -151,10 +177,12 @@ export async function getCharts(days: number) {
            COUNT(s.id) FILTER (WHERE s.referred_by_id IS NOT NULL)::int AS via_recruit_link,
            (SELECT COUNT(*)::int FROM signups c
              WHERE (c.confirmed_at AT TIME ZONE 'Europe/London')::date = d.day) AS confirmations,
-           -- Running total for the Road to 300 line
+           -- Running total for the Road to 300 line: the public counter's rule
+           -- (confirmed, streamers and scouts, not disqualified), by the day
+           -- they CONFIRMED (that's the day they joined the count)
            (SELECT COUNT(*)::int FROM signups p
-             WHERE p.role = 'prospect' AND p.disqualified_at IS NULL
-               AND (p.created_at AT TIME ZONE 'Europe/London')::date <= d.day) AS road_to_300
+             WHERE p.disqualified_at IS NULL AND p.confirmed_at IS NOT NULL
+               AND (p.confirmed_at AT TIME ZONE 'Europe/London')::date <= d.day) AS road_to_300
          FROM days d
          LEFT JOIN signups s ON (s.created_at AT TIME ZONE 'Europe/London')::date = d.day
          GROUP BY d.day
@@ -182,10 +210,12 @@ export async function getCharts(days: number) {
       db.query(`SELECT COALESCE(ip_country, 'Unknown') AS label, COUNT(*)::int AS count
                 FROM signups GROUP BY label ORDER BY count DESC`),
 
-      // 6. Ticked "based in UK" or not
-      db.query(`SELECT CASE WHEN based_in_uk THEN 'UK' ELSE 'Not UK' END AS label,
+      // 6. In the UK? Verified (ticked + a UK IP), ticked but the IP says otherwise, or not ticked
+      db.query(`SELECT CASE WHEN uk_eligible THEN 'UK'
+                            WHEN based_in_uk THEN 'Ticked UK, IP elsewhere'
+                            ELSE 'Not UK' END AS label,
                        COUNT(*)::int AS count
-                FROM signups GROUP BY label ORDER BY label DESC`),
+                FROM signups GROUP BY label ORDER BY count DESC`),
 
       // 7. Top 10 stream categories (typed by prospects, so tidied first)
       db.query(`SELECT lower(trim(stream_category)) AS label, COUNT(*)::int AS count
@@ -211,7 +241,7 @@ export async function getCharts(days: number) {
       db.query(`SELECT
                   COUNT(*)::int                                AS signed_up,
                   COUNT(*) FILTER (WHERE confirmed)::int       AS confirmed,
-                  COUNT(*) FILTER (WHERE eligible)::int        AS eligible,
+                  COUNT(*) FILTER (WHERE eligible)::int        AS eligible,  -- (confirmed + rules + UK)
                   COUNT(*) FILTER (WHERE eligible AND recruits_counted > 0)::int AS recruiting
                 FROM admin_signups WHERE role = 'prospect'`),
 
@@ -220,10 +250,17 @@ export async function getCharts(days: number) {
                 FROM signups WHERE role = 'scout'
                 GROUP BY label ORDER BY count DESC`),
 
-      // 12. How many hours a month scouts can give
+      // 12. How many hours a month scouts can give (older applications only:
+      //     the form asks for weeks instead now, migration 008)
       db.query(`SELECT scout_hours AS label, COUNT(*)::int AS count
                 FROM signups WHERE role = 'scout' AND scout_hours IS NOT NULL
                 GROUP BY scout_hours`),
+
+      // 13. How long scouts will back each streamer: 4, 6 or 8 weeks
+      //     (::text so the labels match the other charts: "4", not 4)
+      db.query(`SELECT scout_weeks::text AS label, COUNT(*)::int AS count
+                FROM signups WHERE role = 'scout' AND scout_weeks IS NOT NULL
+                GROUP BY scout_weeks`),
     ]);
 
   const f = funnel.rows[0];
@@ -252,6 +289,9 @@ export async function getCharts(days: number) {
     byScoutOffer: withPercents(offers.rows),
     byScoutHours: withPercents(
       [...hours.rows].sort((a, b) => HOURS_ORDER.indexOf(a.label) - HOURS_ORDER.indexOf(b.label))
+    ),
+    byScoutWeeks: withPercents(
+      [...weeks.rows].sort((a, b) => WEEKS_ORDER.indexOf(a.label) - WEEKS_ORDER.indexOf(b.label))
     ),
     prospectFunnel: [
       { step: "Signed up", count: f.signed_up, percent: 100 },

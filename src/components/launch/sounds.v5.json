@@ -1,0 +1,36 @@
+{
+  "_about": "Made by scripts/render-intro.py: where each sound really starts (see onset() in render-sounds.py)",
+  "onsetDb": -30,
+  "light": {
+    "onset": 8e-05,
+    "length": 3.7
+  },
+  "lock": {
+    "onset": 8e-05,
+    "length": 0.5
+  },
+  "home": {
+    "onset": 0.02587,
+    "length": 1.45
+  },
+  "open": {
+    "onset": 0.0001,
+    "length": 0.8
+  },
+  "load": {
+    "onset": 0.00023,
+    "length": 0.65
+  },
+  "title": {
+    "onset": 8e-05,
+    "length": 1.5
+  },
+  "dock": {
+    "onset": 0.00075,
+    "length": 0.9
+  },
+  "page": {
+    "onset": 0.08248,
+    "length": 3.7117
+  }
+}

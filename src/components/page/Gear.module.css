@@ -1,0 +1,203 @@
+/* src/components/page/Gear.module.css
+
+   The streaming gear round the home page (Gear.tsx): where each piece sits,
+   and how it loads in.
+
+   BEHIND EVERYTHING
+   The layer covers the page but sits under it (z-index -1, inside the page's
+   own stacking context: Page.module.css .page has isolation: isolate), so the
+   words and buttons are always on top, and it takes up no room at all.
+
+   LOADING IN (like the rest of the page, then a bit more fun)
+   While the page loads, each piece is a grey silhouette that pulses with the
+   page's other loading boxes. Then, just after the page's own boxes have
+   filled in, the pieces pop in one after another with a spring (bigger than
+   life, back a touch too far, settle), the grey turning into the real thing
+   as they land. A moment after each lands, its red light comes on. */
+
+.layer {
+  position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+}
+.item {
+  position: absolute; display: block;
+  /* when it pops in: just after the page's footer (PAGE_ORDER.footer = 5) */
+  --gear-at: calc(var(--rv-rest, 1.25s) + (6 + var(--i, 0) * .75) * var(--rv-gap, .12s));
+  transform: rotate(var(--tilt, 0deg));
+}
+/* the picture (and the light laid over it); --flip mirrors it */
+.art { position: relative; display: block; width: 100%; transform: scaleX(var(--flip, 1)); }
+.shot { display: block; width: 100%; height: 100%; user-select: none; }
+/* floating just off the page: a soft shadow under it (once it's loaded: the
+   grey loading shape is crisp, like the page's other loading boxes) */
+[data-stage="content"] .shot { filter: drop-shadow(0 18px 24px rgba(0, 0, 0, .55)); }
+[data-look="bright"] [data-stage="content"] .shot { filter: drop-shadow(0 18px 26px rgba(0, 0, 0, .24)) drop-shadow(0 4px 7px rgba(0, 0, 0, .14)); }
+.lit { position: absolute; display: block; max-width: none; opacity: 0; user-select: none; }
+.glow {
+  position: absolute; width: var(--glow, 18%); aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(255, 36, 46, .75), rgba(255, 36, 46, .28) 45%, rgba(255, 36, 46, 0));
+  opacity: 0;
+}
+
+/* ---- Where each piece goes ----
+   The idea (on every screen): the gear sits round the EDGES, pointing in, so
+   it frames the words and the buttons and pulls your eye to them, like a
+   window. Nothing sits in the middle competing with "Yet.", and the pieces
+   stay close enough to read as one setup.
+
+   The footer's like the edge of the desk: anything at the bottom sits ON it
+   (--lid: how far its top is from the bottom of the page, Footer.module.css:
+   the bar, 52px on phones and 64px wider, plus the space under it). */
+.layer { --lid: calc(52px + clamp(10px, 2cqh - 4px, 18px) + env(safe-area-inset-bottom, 0px)); }
+
+/* Phones (one column): the mic hangs in from the top left, the camera leans
+   in from the right beside "Yet.", and the headphones sit on the footer, bottom
+   left: a zigzag your eye follows down to the buttons. No room for the
+   controller. */
+.mic {
+  --tilt: 6deg; --flip: -1; --glow: 64%;
+  left: -32px; top: calc(var(--hh, 64px) - 7cqh); width: clamp(76px, 25cqw, 104px); transform-origin: 50% 70%;
+}
+.camera { --tilt: 4deg; --glow: 15%; right: -40px; top: calc(var(--hh, 64px) + 10.5cqh); width: clamp(100px, 27cqw, 136px); }
+.phones { --tilt: 0deg; --glow: 15%; left: 2px; top: auto; bottom: calc(var(--lid) - 2px); width: clamp(50px, 13.5cqw, 62px); }
+.deck { --glow: 24%; display: none; }
+
+/* Short phones (an iPhone SE in Safari): the page is packed tighter, so
+   smaller, and tucked up level with "Yet." */
+@container (max-height: 680px) {
+  .mic { width: 70px; left: -26px; top: calc(var(--hh, 64px) - 8cqh); }
+  .camera { width: 90px; right: -36px; top: calc(var(--hh, 64px) + 1cqh); }
+  .phones { width: 46px; }
+}
+
+/* Wider phones and tablets standing up: a touch more of each */
+@container (min-width: 600px) {
+  .mic { left: -24px; width: 130px; }
+  .camera { right: -24px; width: 190px; }
+  .phones { width: 110px; }
+}
+
+/* Side by side (computers, and anything wide): the same frame, round the
+   page's two columns, worked out from the page's own layout (Page.module.css)
+   so it lands in the same place on a laptop and a big monitor:
+     top      the mic hangs over the voice note, and the camera sits above the
+              hub towards its right, lens turned in towards the words
+     buttons  the headphones hang on the red button (HangingPhones.tsx; their
+              styles are at the bottom of this file)
+     bottom   the controller sits on the footer, over on the right */
+@container (min-width: 1000px) or ((min-width: 760px) and (orientation: landscape)) {
+  .layer { --lid: calc(64px + clamp(10px, 2cqh - 4px, 18px) + env(safe-area-inset-bottom, 0px)); }
+  .deck { display: block; }
+  .item {
+    /* the page's columns, measured from the left of the screen */
+    --box: min(100cqw, 1440px);
+    --left: calc((100cqw - var(--box)) / 2 + var(--pad, 40px));
+    --gap: clamp(32px, 6cqw, 120px);
+    --hero: calc(var(--box) - 2 * var(--pad, 40px) - var(--hub, 480px) - var(--gap));
+    --hub-left: calc(var(--left) + var(--hero) + var(--gap));
+    --hub-right: calc(var(--hub-left) + var(--hub, 480px));
+    right: auto;
+  }
+  .mic { --tilt: 0deg; --flip: 1; --w: 12.7cqh; left: calc(var(--hub-left) + var(--hub, 480px) * .18 - var(--w) / 2); top: -5cqh; width: var(--w); }
+  .camera { --tilt: -6deg; --w: 18.6cqh; left: calc(var(--hub-right) - var(--w) * .62 - var(--hub, 480px) * .15); top: 8cqh; width: var(--w); }
+  .phones { display: none; } /* (they're on the red button instead) */
+  .deck { --tilt: 0deg; --w: 20cqh; left: calc(var(--hub-right) - var(--w) - 1.5cqh); top: auto; bottom: calc(var(--lid) - 3px); width: var(--w); }
+}
+/* too short for the bottom ones (a laptop with the browser zoomed right in) */
+@container (max-height: 600px) {
+  .deck, .phones { display: none; }
+}
+
+/* ---- Loading in ---- */
+/* not there yet (the intro's still running) */
+[data-stage="hidden"] .item { opacity: 0; }
+/* loading: grey silhouettes, pulsing with the page's loading boxes */
+[data-stage="skeleton"] .item { filter: brightness(0) invert(.14); animation: gearPulse 1.8s ease-in-out infinite; }
+[data-look="bright"] [data-stage="skeleton"] .item { filter: brightness(0) invert(.9); }
+/* loaded: the pop, then the light */
+[data-stage="content"] .item { animation: gearIn .8s linear var(--gear-at) both; }
+[data-look="bright"] [data-stage="content"] .item { animation-name: gearInBright; }
+[data-stage="content"] .lit { animation: litOn .6s ease calc(var(--gear-at) + .55s) both; }
+[data-stage="content"] .glow { animation: glowOn .6s ease calc(var(--gear-at) + .55s) both; }
+[data-look="bright"] [data-stage="content"] .glow { animation-name: glowOnBright; }
+
+/* The spring: the grey shape ducks down (like it's winding up), then the
+   real thing pops out past full size, back a touch too far, and settles.
+   (Keyframes rather than one curve, so it overshoots both ways like a real
+   spring; it starts as the same full-size grey shape the loading showed,
+   so nothing jumps when the page switches over.) */
+@keyframes gearIn {
+  0% { transform: rotate(var(--tilt, 0deg)) scale(1); filter: brightness(0) invert(.14); }
+  18% { transform: rotate(var(--tilt, 0deg)) scale(.8); filter: brightness(0) invert(.14); }
+  36% { filter: brightness(1) invert(0); }
+  50% { transform: rotate(calc(var(--tilt, 0deg) - 3deg)) scale(1.12); }
+  72% { transform: rotate(calc(var(--tilt, 0deg) + 1deg)) scale(.96); }
+  88% { transform: rotate(var(--tilt, 0deg)) scale(1.02); }
+  100% { transform: rotate(var(--tilt, 0deg)) scale(1); filter: none; }
+}
+@keyframes gearInBright {
+  0% { transform: rotate(var(--tilt, 0deg)) scale(1); filter: brightness(0) invert(.9); }
+  18% { transform: rotate(var(--tilt, 0deg)) scale(.8); filter: brightness(0) invert(.9); }
+  36% { filter: brightness(1) invert(0); }
+  50% { transform: rotate(calc(var(--tilt, 0deg) - 3deg)) scale(1.12); }
+  72% { transform: rotate(calc(var(--tilt, 0deg) + 1deg)) scale(.96); }
+  88% { transform: rotate(var(--tilt, 0deg)) scale(1.02); }
+  100% { transform: rotate(var(--tilt, 0deg)) scale(1); filter: none; }
+}
+@keyframes gearPulse { 50% { opacity: .55; } }
+/* the light: a quick flicker on, then steady (like a real tally light) */
+@keyframes litOn { 0% { opacity: 0; } 25% { opacity: 1; } 45% { opacity: .12; } 70%, 100% { opacity: 1; } }
+@keyframes glowOn { 0% { opacity: 0; } 25% { opacity: .95; } 45% { opacity: .1; } 70%, 100% { opacity: .8; } }
+@keyframes glowOnBright { 0% { opacity: 0; } 25% { opacity: .6; } 45% { opacity: .05; } 70%, 100% { opacity: .42; } }
+
+/* ---- The headphones hanging on the red button (computers: HangingPhones.tsx) ----
+   .hang is pinned to the point where the headband rests on the button's top
+   edge (a zero-size box there, so it turns round that point); .hangPop is the
+   picture, moved so that point lands on it. Two of each: the whole headphones
+   behind the button, their front half in front, moving together. */
+.hang {
+  position: absolute; display: none; width: 0; height: 0; pointer-events: none;
+  --hw: 96px; /* how wide (HangingPhones.tsx sizes them to the button) */
+  --gear-at: calc(var(--rv-rest, 1.25s) + (6 + var(--i, 0) * .75) * var(--rv-gap, .12s));
+}
+.hang[hidden] { display: none; }
+/* (computers only, and not on very short screens: same sizes as above) */
+@container (min-width: 1000px) or ((min-width: 760px) and (orientation: landscape)) {
+  .hang { display: block; }
+}
+@container (max-height: 600px) {
+  .hang { display: none; }
+}
+.hangBack { z-index: -1; }
+.hangFront { z-index: 1; }
+.hangPop {
+  position: absolute; left: 0; top: 0; display: block; width: var(--hw);
+  translate: var(--hx) var(--hy); transform-origin: calc(-1 * var(--hx)) calc(-1 * var(--hy));
+}
+/* loading in, with the rest of the gear */
+[data-stage="hidden"] .hangPop { opacity: 0; }
+[data-stage="skeleton"] .hangPop { filter: brightness(0) invert(.14); animation: gearPulse 1.8s ease-in-out infinite; }
+[data-look="bright"] [data-stage="skeleton"] .hangPop { filter: brightness(0) invert(.9); }
+[data-stage="content"] .hangPop { animation: gearIn .8s linear var(--gear-at) both; }
+[data-look="bright"] [data-stage="content"] .hangPop { animation-name: gearInBright; }
+/* how they move */
+.hang[data-move="sway"] { animation: hangSway 1.4s ease-out both; }
+.hang[data-move="jolt"] { animation: hangJolt .5s ease-out both; }
+.hang[data-move="away"] { animation: hangAway .2s ease-in both; }
+.hang[data-move="back"] { animation: hangBack 1.6s ease-out both; }
+@keyframes hangSway { 0% { rotate: 0deg; } 20% { rotate: 4deg; } 45% { rotate: -2.6deg; } 70% { rotate: 1.2deg; } 100% { rotate: 0deg; } }
+@keyframes hangJolt { 0% { rotate: 0deg; } 18% { rotate: -9deg; } 45% { rotate: 6deg; } 75% { rotate: -2deg; } 100% { rotate: 0deg; } }
+@keyframes hangAway { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: 0 -8px; } }
+/* dropped back on: falls the last bit onto the edge, then swings and settles */
+@keyframes hangBack {
+  0% { opacity: 0; translate: 0 -16px; rotate: 0deg; }
+  12% { opacity: 1; translate: 0 0; rotate: 0deg; }
+  25% { rotate: 7deg; } 42% { rotate: -5deg; } 58% { rotate: 3deg; } 74% { rotate: -1.4deg; } 88% { rotate: .5deg; }
+  100% { opacity: 1; translate: 0 0; rotate: 0deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-stage] .item, [data-stage] .hangPop { animation: none !important; filter: none; }
+  [data-stage="content"] :is(.lit, .glow) { animation-duration: .01s !important; animation-delay: 0s !important; }
+  .hang[data-move="sway"], .hang[data-move="jolt"] { animation: none; }
+  .hang[data-move="back"] { animation: hangAway .2s ease-out reverse both; }
+}

@@ -13,9 +13,10 @@
 //
 // TESTING ANY VERSION: add these to the URL (they win over detection)
 //   ?device=phone | tablet | desk-dock | desk-bar
-//   ?look=dark | bright
+//   ?look=dark | bright      forces a look (careful: it beats the clock until you take it out)
+//   ?hour=14                 pretends it's that hour, to check the clock picks the right look
 //   ?source=browser | social
-// e.g. http://localhost:3000/?device=phone&look=bright
+// e.g. http://localhost:3000/?device=phone&hour=21
 
 export type Device = "phone" | "tablet" | "desk";
 export type DockStyle = "dock" | "bar";
@@ -30,18 +31,19 @@ export type Visitor = {
   forced: boolean; // true when ?device= picked the device (we then show it in a frame on big screens)
 };
 
-// Night is 7pm to 7am on the visitor's clock.
-// BRIGHT_AT_NIGHT = true  -> bright at night, dark in the day (what we have now)
-// BRIGHT_AT_NIGHT = false -> dark at night, bright in the day (the flip on your list)
-const BRIGHT_AT_NIGHT = true;
-const NIGHT_STARTS = 19;
-const NIGHT_ENDS = 7;
+// WHICH LOOK SHOWS WHEN, on the visitor's own clock.
+// Day is 7am to 7pm, night is 7pm to 7am. To swap them round, swap the two words.
+export const LOOK_BY_TIME: Record<"day" | "night", Look> = {
+  day: "bright",
+  night: "dark",
+};
+const NIGHT_STARTS = 19; // 7pm
+const NIGHT_ENDS = 7; // 7am
 
 export function lookFromClock(date = new Date()): Look {
   const hour = date.getHours();
   const isNight = hour >= NIGHT_STARTS || hour < NIGHT_ENDS;
-  if (BRIGHT_AT_NIGHT) return isNight ? "bright" : "dark";
-  return isNight ? "dark" : "bright";
+  return LOOK_BY_TIME[isNight ? "night" : "day"];
 }
 
 export function detectVisitor(): Visitor {
@@ -77,7 +79,7 @@ export function detectVisitor(): Visitor {
   return { device, dockStyle, source, look: lookFromClock(), forced: false };
 }
 
-// Reads ?device= ?look= ?source= from the URL and lays them over what we detected.
+// Reads ?device= ?hour= ?look= ?source= from the URL and lays them over what we detected.
 export function applyUrlOverrides(visitor: Visitor, search: string): Visitor {
   const params = new URLSearchParams(search);
   const next = { ...visitor };
@@ -93,6 +95,15 @@ export function applyUrlOverrides(visitor: Visitor, search: string): Visitor {
     next.forced = true;
   }
 
+  // ?hour=14: the look the clock would pick at that hour (to test it any time of day)
+  const hour = Number(params.get("hour"));
+  if (params.has("hour") && Number.isInteger(hour) && hour >= 0 && hour <= 23) {
+    const at = new Date();
+    at.setHours(hour, 0, 0, 0);
+    next.look = lookFromClock(at);
+  }
+
+  // ?look=dark|bright: forces it, whatever the time
   const look = params.get("look");
   if (look === "dark" || look === "bright") next.look = look;
 
@@ -100,6 +111,21 @@ export function applyUrlOverrides(visitor: Visitor, search: string): Visitor {
   if (source === "browser" || source === "social") next.source = source;
 
   return next;
+}
+
+// Just the look (for pages without the intro, like /confirm): the clock's,
+// with ?hour= and ?look= still working
+export function lookFor(search: string): Look {
+  const params = new URLSearchParams(search);
+  const forced = params.get("look");
+  if (forced === "dark" || forced === "bright") return forced;
+  const hour = Number(params.get("hour"));
+  if (params.has("hour") && Number.isInteger(hour) && hour >= 0 && hour <= 23) {
+    const at = new Date();
+    at.setHours(hour, 0, 0, 0);
+    return lookFromClock(at);
+  }
+  return lookFromClock();
 }
 
 export function prefersReducedMotion(): boolean {

@@ -19,7 +19,8 @@
 
 import { useEffect, useRef } from "react";
 import { prefersReducedMotion } from "./detect";
-import { drawLight, makeShape, parseColor, perimeter, prepareCanvas } from "./light";
+import { lightSpot } from "../sound/lightSpot";
+import { drawLight, makeShape, parseColor, perimeter, pointAlong, prepareCanvas } from "./light";
 import { LED, type Phase } from "./timeline";
 import styles from "./LaunchIntro.module.css";
 
@@ -105,6 +106,12 @@ export function EdgeLight({ phase, edgeRadius }: { phase: Phase; edgeRadius: num
       );
 
       // 3. The light itself, plus the full outline once the lap is done
+      // where the front of the light is, for its sound to follow (v3: sound/engine.ts)
+      const [lx, ly] = pointAlong(shape, head);
+      lightSpot.x = lx / W;
+      lightSpot.y = ly / H;
+      lightSpot.at = now;
+
       drawLight(ctx, shape, {
         head,
         length: lerp(LED.buttonLength, LED.edgeLength, morph) * perimeter(shape),

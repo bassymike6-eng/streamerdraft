@@ -10,7 +10,11 @@
 //            { "disqualified": true, "reason": "fake recruits" }
 //            { "disqualified": false }               ← reinstate them
 //            { "note": "DM'd them on TikTok" }       ← "" clears the note
-//            { "scoutApproved": true }               ← approve a scout (false = un-approve)
+//            { "scoutChecked": true }                ← "Looks good" on a scout (false = un-tick)
+//            { "scoutTurnedDown": true, "reason": "fake links" }
+//                                                    ← turn a scout down: the FIRST time,
+//                                                      they're emailed (if they'd confirmed)
+//            { "scoutTurnedDown": false }            ← undo it (no email)
 //
 //   DELETE /api/admin/signups/42   remove them completely, for "delete my
 //            { "confirm": true }   data" requests. Can't be undone, so the
@@ -21,7 +25,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin-auth";
-import { deleteSignup, getSignupDetail, setDisqualified, setNote, setScoutApproved } from "@/lib/admin-signups";
+import { deleteSignup, getSignupDetail, setDisqualified, setNote, setScoutChecked, setScoutTurnedDown } from "@/lib/admin-signups";
+import { sendEmail } from "@/lib/email";
+import { turnDownEmail } from "@/lib/turn-down-email";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -33,16 +39,41 @@ const patchSchema = z
     disqualified: z.boolean().optional(),
     reason: z.string().trim().max(200).optional(),
     note: z.string().trim().max(1000).optional(),
-    scoutApproved: z.boolean().optional(),
+    scoutChecked: z.boolean().optional(),
+    scoutTurnedDown: z.boolean().optional(),
   })
   .refine(
-    (body) => body.disqualified !== undefined || body.note !== undefined || body.scoutApproved !== undefined,
-    { error: "Send disqualified, note and/or scoutApproved." }
-  );
+    (body) =>
+      body.disqualified !== undefined || body.note !== undefined ||
+      body.scoutChecked !== undefined || body.scoutTurnedDown !== undefined,
+    { error: "Send disqualified, note, scoutChecked and/or scoutTurnedDown." }
+  )
+  // one reason box: it can't be for disqualifying AND turning down at once
+  .refine((body) => !(body.disqualified === true && body.scoutTurnedDown === true), {
+    error: "Disqualify and turn down separately.",
+  });
 
 const deleteSchema = z.object({ confirm: z.literal(true) });
 
 const notFound = () => NextResponse.json({ ok: false, error: "No sign-up with that id." }, { status: 404 });
+const notScout = () => NextResponse.json({ ok: false, error: "Only scouts can be checked or turned down." }, { status: 400 });
+
+// The "we can't take you on as a scout" email (src/lib/turn-down-email.ts).
+// Only to a confirmed email. If it doesn't send, they're still turned down:
+// returns false, and the dashboard says it didn't go.
+async function emailTurnDown(id: number): Promise<boolean> {
+  const detail = await getSignupDetail(id);
+  const person = detail?.signup;
+  if (!person?.confirmed) return false;
+  try {
+    const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+    await sendEmail({ to: person.email, ...turnDownEmail({ displayName: person.displayName, eligible: person.eligible }, appUrl) });
+    return true;
+  } catch (error) {
+    console.error("[admin/signups] the turn-down email didn't send:", error);
+    return false;
+  }
+}
 const failed = (where: string, error: unknown) => {
   console.error(`[admin/signups/${where}] unexpected error:`, error);
   return NextResponse.json({ ok: false, error: "Something went wrong." }, { status: 500 });
@@ -82,28 +113,34 @@ export async function PATCH(request: Request, { params }: Context) {
   const body = patchSchema.safeParse(await readJson(request));
   if (!body.success) {
     return NextResponse.json(
-      { ok: false, error: "Send disqualified (true/false), a note and/or scoutApproved (true/false)." },
+      { ok: false, error: "Send disqualified, a note, scoutChecked or scoutTurnedDown (true/false)." },
       { status: 400 }
     );
   }
 
   try {
-    const { disqualified, reason, note, scoutApproved } = body.data;
+    const { disqualified, reason, note, scoutChecked, scoutTurnedDown } = body.data;
 
-    // Approving is checked FIRST: if this isn't a scout, nothing else gets
-    // changed either, so a mistake never leaves half a change behind.
-    if (scoutApproved !== undefined) {
-      const outcome = await setScoutApproved(id.data, scoutApproved);
+    // Scout changes are checked FIRST: if this isn't a scout, nothing else
+    // gets changed either, so a mistake never leaves half a change behind.
+    if (scoutChecked !== undefined) {
+      const outcome = await setScoutChecked(id.data, scoutChecked);
       if (outcome === "not_found") return notFound();
-      if (outcome === "not_scout") {
-        return NextResponse.json({ ok: false, error: "Only scouts can be approved." }, { status: 400 });
-      }
+      if (outcome === "not_scout") return notScout();
+    }
+    let emailed = false;
+    if (scoutTurnedDown !== undefined) {
+      const { outcome, wasAlready } = await setScoutTurnedDown(id.data, scoutTurnedDown, reason);
+      if (outcome === "not_found") return notFound();
+      if (outcome === "not_scout") return notScout();
+      // Newly turned down: tell them (only if they'd confirmed their email)
+      if (scoutTurnedDown && !wasAlready) emailed = await emailTurnDown(id.data);
     }
     if (disqualified !== undefined && !(await setDisqualified(id.data, disqualified, reason))) return notFound();
     if (note !== undefined && !(await setNote(id.data, note))) return notFound();
 
     // Send back the updated person, so the page can refresh in one go.
-    return NextResponse.json({ ok: true, ...(await getSignupDetail(id.data)) });
+    return NextResponse.json({ ok: true, emailed, ...(await getSignupDetail(id.data)) });
   } catch (error) {
     return failed("patch", error);
   }

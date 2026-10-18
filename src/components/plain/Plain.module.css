@@ -1,0 +1,70 @@
+/* src/components/plain/Plain.module.css
+
+   The pages without the intro (PlainPage.tsx): confirm, rules, privacy.
+   They set the home page's colours themselves, for both looks (dark at night,
+   bright in the day): the same values as LaunchIntro.module.css and
+   Page.module.css, so everything (buttons, pop-ups, the footer) looks the same.
+
+   SECTIONS  1. Colours   2. Header and column   3. Reading pages (rules, privacy) */
+
+/* =============== 1. Colours =============== */
+.root {
+  --red: #E50914; --red-hot: #FF2D37;
+  --bg: #000; --ink: #fff; --ink2: rgba(255, 255, 255, .74); --sk: #1A1A1E;
+  --capsule: #222225; --capsule-hover: #2B2B2F;
+  --surface-edge: inset 0 1px 0 rgba(255, 255, 255, .07), inset 0 0 0 1px rgba(255, 255, 255, .1);
+  --track: rgba(118, 118, 128, .34);
+  --hairline: rgba(255, 255, 255, .09);
+  --ok: #30D158; --wait: #FF9F0A;
+  /* the form bits (Entry.module.css) use the pop-up's names for these */
+  --sheet-card: #1C1C1E; --sheet-line: rgba(255, 255, 255, .1); --sheet-soft: rgba(255, 255, 255, .12); --sheet-ink2: var(--ink2);
+  --press: cubic-bezier(.3, 1.5, .5, 1);
+  --pad: 20px;
+  /* the brand font's list (fontStack in brand-font.ts) falls back to Anton,
+     which only the intro loads: without this, the whole list is invalid and
+     the logo would show in the plain font */
+  --font-anton: Impact;
+
+  min-height: 100dvh; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+}
+.root[data-look="bright"] {
+  --bg: #fff; --ink: #0B0B0F; --ink2: rgba(0, 0, 0, .6); --sk: #EFEFF3;
+  --capsule: #F2F2F7; --capsule-hover: #E8E8EE;
+  --surface-edge: inset 0 0 0 1px rgba(0, 0, 0, .04);
+  --track: rgba(118, 118, 128, .16);
+  --hairline: rgba(0, 0, 0, .07);
+  --ok: #248A3D; --wait: #C93400;
+  --sheet-card: #F2F2F7; --sheet-line: rgba(0, 0, 0, .07); --sheet-soft: rgba(0, 0, 0, .06);
+}
+/* until the browser's worked out the look, show only the logo (no flash of the wrong one) */
+.root:not([data-look]) > :not(header) { visibility: hidden; }
+
+/* =============== 2. Header and column =============== */
+.header { box-sizing: border-box; width: 100%; max-width: 1440px; height: 64px; margin: 0 auto; padding: 0 var(--pad); display: flex; align-items: center; flex-shrink: 0; }
+.logo { font-family: var(--font-display); font-size: 28px; line-height: 1; color: var(--red); text-decoration: none; }
+.logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
+
+.main { box-sizing: border-box; width: 100%; max-width: 560px; margin: 0 auto; flex: 1; padding: 12px var(--pad) 40px; }
+.main[data-wide] { max-width: 720px; }
+
+@media (min-width: 720px) {
+  .root { --pad: clamp(32px, 5.5vw, 72px); }
+  .header { height: 76px; }
+  .logo { font-size: 32px; }
+  .main { padding-top: clamp(24px, 6vh, 72px); }
+}
+
+/* =============== 3. Reading pages (DocPages.tsx) ===============
+   A big title, a line under it, then the text (Entry.module.css .rules). */
+.doc { display: flex; flex-direction: column; animation: docIn .5s cubic-bezier(.2, .8, .2, 1) both; }
+.docTitle { margin: 0; font-size: clamp(32px, 8vw, 48px); font-weight: 700; line-height: 1.08; letter-spacing: -.025em; text-wrap: balance; }
+.docLead { margin: 12px 0 32px; max-width: 34em; font-size: 18px; line-height: 1.5; color: var(--ink2); }
+.docBody { padding-bottom: 8px; }
+.docBack { align-self: flex-start; margin-top: 32px; }
+
+@keyframes docIn { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) {
+  .doc { animation: none; }
+}

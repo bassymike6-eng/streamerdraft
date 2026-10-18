@@ -36,3 +36,18 @@ export function Wordmark({ text, box }: { text: string; box: WordBox }) {
     </div>
   );
 }
+
+// The logo the page keeps once the intro's over: just the red copy, drawn the
+// same way and the same size as the docked title. The page (SitePage.tsx) puts
+// it in its header, exactly where the title docked, and the intro's own title
+// hides at that moment. So the logo is part of the page and scrolls with it,
+// instead of floating on its own layer over the top.
+export function LogoMark({ text, box }: { text: string; box: WordBox }) {
+  return (
+    <svg className={styles.wmSvg} viewBox={`0 0 ${box.width} ${box.height}`} aria-hidden="true">
+      <text className={`${styles.wt} ${styles.wt3}`} x={box.x} y={box.y}>
+        {text}
+      </text>
+    </svg>
+  );
+}

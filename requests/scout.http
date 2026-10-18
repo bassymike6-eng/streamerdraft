@@ -1,0 +1,173 @@
+# requests/scout.http
+#
+# WHAT THIS IS
+# The scout application (migration 008), one request at a time: a good one,
+# then each rule the server checks. The form checks the same things in the
+# browser, but anyone can send anything to the API, so the server checks too.
+#
+# HOW TO RUN IT
+# Send them top to bottom. Each says what to expect.
+# (Too many tries? The sign-up allows 20 per 10 minutes: restart `npm run dev`.)
+#
+# Start again:
+#   DELETE FROM signups WHERE email LIKE '%@scout.example.com';
+
+@base = http://localhost:3000
+
+### 1. A full application → expect 201, role "scout", a statusKey
+# (the second link is the same as the first written differently: it's only saved once)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "jane@scout.example.com",
+  "displayName": "Jane Scout",
+  "platformUrls": ["twitch.tv/janescout", "https://twitch.tv/janescout", "youtube.com/@janescout"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["streaming", "short_form"],
+  "scoutOffers": ["clipping", "feedback", "other"],
+  "scoutOfferOther": "Thumbnails",
+  "scoutWeeks": 6,
+  "scoutPitch": "I wish someone had done this for me when I started.",
+  "commitmentAccepted": true,
+  "ageConfirmed": true,
+  "basedInUk": true
+}
+
+### 2. No weeks picked → expect 400, fields.scoutWeeks: "Pick 4, 6 or 8 weeks."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "noweeks@scout.example.com",
+  "displayName": "No Weeks",
+  "platformUrls": ["kick.com/noweeks"],
+  "audienceSize": "under_10k",
+  "contentTypes": ["streaming"],
+  "scoutOffers": ["collabs"],
+  "commitmentAccepted": true,
+  "ageConfirmed": true
+}
+
+### 3. 5 weeks (only 4, 6 or 8) → expect 400, fields.scoutWeeks
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "fiveweeks@scout.example.com",
+  "displayName": "Five Weeks",
+  "platformUrls": ["kick.com/fiveweeks"],
+  "audienceSize": "under_10k",
+  "contentTypes": ["streaming"],
+  "scoutOffers": ["collabs"],
+  "scoutWeeks": 5,
+  "commitmentAccepted": true,
+  "ageConfirmed": true
+}
+
+### 4. Ticked "Something else" but didn't say what → expect 400,
+###    fields.scoutOfferOther: "Say what else you can help with."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "other@scout.example.com",
+  "displayName": "Other Test",
+  "platformUrls": ["tiktok.com/@othertest"],
+  "audienceSize": "50k_100k",
+  "contentTypes": ["short_form"],
+  "scoutOffers": ["other"],
+  "scoutWeeks": 4,
+  "commitmentAccepted": true,
+  "ageConfirmed": true
+}
+
+### 5. 6 links (5 at most) → expect 400, fields.platformUrls: "Add up to 5 links."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "links@scout.example.com",
+  "displayName": "Many Links",
+  "platformUrls": ["a.com", "b.com", "c.com", "d.com", "e.com", "f.com"],
+  "audienceSize": "100k_plus",
+  "contentTypes": ["videos"],
+  "scoutOffers": ["intros"],
+  "scoutWeeks": 8,
+  "commitmentAccepted": true,
+  "ageConfirmed": true
+}
+
+### 6. Didn't agree to the commitment → expect 400, fields.commitmentAccepted
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "nocommit@scout.example.com",
+  "displayName": "No Commit",
+  "platformUrls": ["twitch.tv/nocommit"],
+  "audienceSize": "under_10k",
+  "contentTypes": ["streaming"],
+  "scoutOffers": ["raids"],
+  "scoutWeeks": 4,
+  "commitmentAccepted": false,
+  "ageConfirmed": true
+}
+
+### 7. Make a STREAMER with an email... → expect 201
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "prospect",
+  "email": "both@scout.example.com",
+  "displayName": "Both Roles",
+  "ageConfirmed": true
+}
+
+### 8. ...then apply to scout with the same email → expect 409, status "role_taken",
+###    fields.email: "This email's already signed up as a streamer. To scout instead, email us at ..."
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "both@scout.example.com",
+  "displayName": "Both Roles",
+  "platformUrls": ["twitch.tv/bothroles"],
+  "audienceSize": "under_10k",
+  "contentTypes": ["streaming"],
+  "scoutOffers": ["feedback"],
+  "scoutWeeks": 6,
+  "commitmentAccepted": true,
+  "ageConfirmed": true
+}
+
+### 9. Apply again with test 1's email (not confirmed yet) → expect 200, status "resent"
+###    (a fresh confirmation link, unless one went out in the last minute)
+POST {{base}}/api/signup
+Content-Type: application/json
+
+{
+  "role": "scout",
+  "email": "jane@scout.example.com",
+  "displayName": "Jane Scout",
+  "platformUrls": ["twitch.tv/janescout"],
+  "audienceSize": "10k_50k",
+  "contentTypes": ["streaming"],
+  "scoutOffers": ["clipping"],
+  "scoutWeeks": 6,
+  "commitmentAccepted": true,
+  "ageConfirmed": true
+}
+
+# Then in pgAdmin, to see test 1 saved:
+#   SELECT platform_urls, scout_offers, scout_offer_other, scout_weeks, scout_pitch
+#   FROM signups WHERE email = 'jane@scout.example.com';
+# platform_urls should have 2 links (the repeat of the Twitch link is left out).

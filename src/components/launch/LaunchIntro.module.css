@@ -13,7 +13,7 @@
    SECTIONS
    1. Root, screen, colour looks     6. The app window (browser)
    2. Play button and the red light  7. The title
-   3. Home screen: phone and tablet  8. The page (loading placeholders)
+   3. Home screen: phone and tablet  8. The page (its layer)
    4. Home screen: computer          9. Controls and dev panel
    5. Touch dot and cursor          10. TIMELINE  11. Keyframes */
 
@@ -107,8 +107,6 @@
 /* The red light: a canvas over the whole screen, drawn by EdgeLight.tsx.
    A crisp line, no glow. It sits just above the play button (z 51). */
 .halo { position: absolute; inset: 0; z-index: 51; width: 100%; height: 100%; pointer-events: none; transition: opacity .6s ease; }
-/* The loading boxes' lights: a canvas filling each box (SkeletonPage.tsx draws them) */
-.boxLight { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 /* =============== 3. Home screen: phone and tablet (PhoneHome.tsx, homeParts.tsx) =============== */
 /* Shared by every home screen */
@@ -441,40 +439,13 @@
 .root[data-look="bright"] .wt1 { fill: #000; }
 .root[data-look="bright"] .wt2 { fill: #f4a3a8; }
 
-/* =============== 8. The page (loading placeholders) =============== */
-.site { z-index: 20; visibility: hidden; background: var(--bg); color: var(--ink); overflow: hidden; }
-.skHead { max-width: 1120px; height: var(--hh, 64px); margin: 0 auto; padding: 0 var(--pad, 20px); display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-.skWrap { max-width: 1120px; margin: 0 auto; padding: 4px var(--pad, 20px) 24px; display: flex; flex-direction: column; gap: 16px; }
-.skTabs { display: flex; gap: 10px; overflow: hidden; }
-.skGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.skRow3 { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-@container (min-width: 720px) {
-  .skGrid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
-  .skRow3 { display: grid; }
-}
-/* Each box's loading light is drawn by SkeletonPage.tsx (BoxLight), all in step.
-   The grey placeholders pulse together once the page is on screen (see TIMELINE). */
-.sk { position: relative; }
-.skIn { opacity: 0; }
-.shim { background-color: var(--sk); }
-.c40 { width: 40px; height: 40px; border-radius: 50%; }
-.pill { flex: 0 0 auto; width: 98px; height: 40px; border-radius: 999px; }
-.pillOn { width: 118px; }
-.card { border-radius: 22px; background: var(--card); padding: 20px; box-shadow: 0 0 0 1px var(--line); }
-.hero { background: var(--hero), var(--card); display: flex; flex-direction: column; gap: 26px; }
-.heroTop { display: flex; flex-direction: column; gap: 10px; }
-.heroRow { display: flex; justify-content: space-around; }
-.hcol { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.skl { display: block; height: 14px; border-radius: 7px; }
-.skc { display: block; flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; }
-.sq { display: block; width: 56px; height: 56px; border-radius: 14px; }
-.w30 { width: 30%; } .w45 { width: 45%; } .w60 { width: 60%; } .w80 { width: 80%; } .w56px { width: 56px; }
-.big { height: 30px; width: 42%; border-radius: 10px; }
-.list { display: flex; flex-direction: column; }
-.lrow { display: flex; align-items: center; gap: 14px; padding: 14px 0; }
-.lrow + .lrow { border-top: 1px solid var(--line); }
-.lcol { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.mini { display: flex; flex-direction: column; gap: 12px; }
+/* =============== 8. The page =============== */
+/* The layer the StreamerDraft page sits in (src/components/page/ has the page
+   itself and its own styles). Hidden until the title docks. Once the intro is
+   over it scrolls, with the scrollbar hidden so the page lines up exactly with
+   where the title docked. */
+.site { z-index: 20; visibility: hidden; background: var(--bg); color: var(--ink); overflow: hidden; scrollbar-width: none; }
+.site::-webkit-scrollbar { display: none; }
 
 /* =============== 9. Controls and dev panel =============== */
 .skip, .replay {
@@ -583,15 +554,12 @@
 .root[data-on~="title"] .wt3 { animation: splitB .65s linear both; }
 .root[data-on~="title"] .wt2 { animation: splitC .65s linear both, fadeOut .3s ease .55s both; }
 
-/* dock: the title shrinks into the top left; the page's placeholders come in */
+/* dock: the title shrinks into the top left; the page's loading boxes come in
+   (the page animates its own boxes: Page.module.css, "Loading boxes -> content") */
 .root[data-on~="dock"] .wmk { animation: titleDock .8s cubic-bezier(.32,.72,0,1) forwards; }
 .root[data-on~="dock"] .site { visibility: visible; }
-.root[data-on~="dock"] .skIn { animation: fadeIn .45s ease both; animation-delay: calc(.35s + var(--i, 0) * 45ms); }
-.root[data-on~="dock"] .shim { animation: pulse 1.8s ease-in-out infinite; }
-.root[data-on~="dock"] .skIn.shim { animation: fadeIn .45s ease both, pulse 1.8s ease-in-out infinite; animation-delay: calc(.35s + var(--i, 0) * 45ms), 0s; }
-/* (every placeholder starts pulsing at the same moment, so they pulse together) */
 
-/* done: the page, waiting for its content */
+/* done: the intro's over; the page's content loads in (REVEAL in timeline.ts) and it scrolls */
 .root[data-phase="done"] .skip { display: none; }
 .root[data-phase="done"] .replay { display: inline-flex; }
 .root[data-phase="done"] .go,
@@ -600,14 +568,14 @@
 .root[data-phase="done"] .win,
 .root[data-phase="done"] .touch,
 .root[data-phase="done"] .cursor { display: none; }
-.root[data-phase="done"] .wmk { opacity: 1; transform: translate(var(--kx), var(--ky)) scale(var(--ks)); }
+/* the docked title hands over to its twin in the page's header (SitePage.tsx),
+   which sits in exactly the same spot, so the logo scrolls with the page */
+.root[data-phase="done"] .wmk { opacity: 1; visibility: hidden; transform: translate(var(--kx), var(--ky)) scale(var(--ks)); }
 .root[data-phase="done"] .wt1,
 .root[data-phase="done"] .wt2 { opacity: 0; }
-.root[data-phase="done"] .site { visibility: visible; }
-.root[data-phase="done"] .skIn { opacity: 1; }
+.root[data-phase="done"] .site { visibility: visible; overflow-y: auto; overscroll-behavior: contain; }
 
 /* =============== 11. Keyframes =============== */
-@keyframes pulse { 50% { background-color: var(--sk2); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
 @keyframes goOut { to { opacity: 0; transform: scale(.6); } }
@@ -651,5 +619,5 @@
 @keyframes titleDock { from { transform: translate(var(--cx), var(--cy)) scale(1); } to { transform: translate(var(--kx), var(--ky)) scale(var(--ks)); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .root *, .root *::before { animation: none !important; transition: none !important; }
+  .root *, .root *::before, .root *::after { animation: none !important; transition: none !important; }
 }

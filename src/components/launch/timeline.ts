@@ -12,8 +12,8 @@
 //   launch  the app opens out of its icon
 //   load    the site loads in the browser
 //   title   the browser bar slides away, STREAMERDRAFT comes in
-//   dock    the title shrinks into the top left; the page's loaders come in
-//   done    the page, waiting for its content
+//   dock    the title shrinks into the top left; the page's loading boxes come in
+//   done    the page's real content loads into those boxes (REVEAL, below)
 //
 // HOW THE CSS KNOWS WHERE WE ARE
 // The root element gets data-on="tap fill home ..." listing every phase reached
@@ -72,11 +72,44 @@ export const PHASE_TIMES: { phase: Phase; at: number }[] = [
   { phase: "done", at: PRESS_AT + 3.85 },
 ];
 
-// HOME as CSS custom properties for the root element: { "--h-dock": "0.05s", ... }
+// The page's own reveal, in seconds after "done" starts (the hero: src/components/page/).
+// The loading boxes have been showing since "dock"; now the real content takes their place:
+//   headline  "Nobody's watching." fades up, quiet and grey (with a soft swell)
+//   yet       a beat of silence, then "Yet." slams in red (with a hit)
+//   rest      the line under it, then each capsule fills in, one after another
+//   gap       ...this far apart (each capsule gets a pop, so this is the pops' rhythm too)
+export const REVEAL = {
+  headline: 0,
+  yet: 0.85,
+  rest: 1.25,
+  gap: 0.12,
+};
+
+// When part number n of the page fills in (seconds after "done").
+// The page's CSS works the same thing out from --n (see "slot" in Page.module.css);
+// the lights (useBoxLights.ts) and the pops (soundCues.ts) use this, so all three line up.
+export const revealAt = (n: number) => REVEAL.rest + n * REVEAL.gap;
+
+// The order the page's parts fill in, after the headline (the n above).
+// Kept here, next to the timings, because the page AND the sound cues both need it:
+// every capsule from `join` to `road` gets a pop as it fills in. The footer
+// fills in last, quietly.
+export const PAGE_ORDER = {
+  sub: 0, // the line under the headline (words: no pop)
+  join: 1, // Join the draft
+  scout: 2, // Apply to scout
+  voice: 3, // the voice note island
+  road: 4, // Road to 300 + How it works (one box)
+  footer: 5, // the footer capsule (no pop)
+} as const;
+
+// HOME and REVEAL as CSS custom properties for the root element:
+// { "--h-dock": "0.05s", ..., "--rv-yet": "0.85s", ... }
 // (the same on the server and in the browser, so it's safe to render straight away)
 export function homeVars(): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const [beat, seconds] of Object.entries(HOME)) vars[`--h-${beat}`] = `${seconds}s`;
+  for (const [beat, seconds] of Object.entries(REVEAL)) vars[`--rv-${beat}`] = `${seconds}s`;
   return vars;
 }
 

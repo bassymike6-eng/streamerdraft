@@ -21,6 +21,12 @@
 // Browsers block sound until the visitor taps or clicks something. The play
 // button IS that tap, so start() must be called inside its click handler.
 //
+// WHICH VERSION, AND SOUND OFF
+// The files come from the version soundSet.ts picks (v5, or v2 / v1 with
+// ?sounds=v2 / ?sounds=v1). If the visitor has turned sound off (the footer's Sound
+// button), the intro plays silently. The audio engine is shared with the
+// page's own sounds (uiSound.ts), so the page can use it once the intro's over.
+//
 // WHY IT PLAYS EVEN WHEN AN IPHONE IS ON SILENT
 // By default iPhones treat web sound as "ambient" (like a game's sound effects),
 // and the silent switch mutes ambient sound. A video, though, is "playback",
@@ -29,21 +35,20 @@
 //   - Safari 16.4 and newer: navigator.audioSession.type = "playback"
 //   - older iPhones: play a silent <audio> clip while the intro runs
 // Side effect: like starting a video, it may pause music the visitor has on.
+// Once the intro's over it goes back to "ambient" (see soundSet.ts), so the
+// page's little sounds behave like an app's: the silent switch mutes them.
 
 import type { Device } from "./detect";
-import { cuesFor, MIX, SOUND_NAMES, type SoundName } from "./soundCues";
-import manifest from "./sounds.json";
+import { cuesFor, introNames, MIX, type SoundName } from "./soundCues";
+import { followLight } from "../sound/place";
+import { holdPlaybackSession, releasePlaybackSession, soundManifest, soundOn, soundUrl, unlockAudio } from "./soundSet";
 import { PHASE_TIMES, type Phase } from "./timeline";
 
 // When the intro has finished (plus time for the last sounds to ring out).
 const INTRO_END = (PHASE_TIMES[PHASE_TIMES.length - 1]?.at ?? 10) + 4;
 
-// A tenth of a second of silence (a tiny WAV file written out as text), for older iPhones.
-const SILENT_WAV = "data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
-
 const MASTER = 0.9; // overall volume
 
-type AudioSessionNavigator = Navigator & { audioSession?: { type: string } };
 type Manifest = { onsetDb: number } & Record<string, { onset: number; length: number } | number | string>;
 
 // A decoded sound, and how much silence its start seemed to have (see the top)
@@ -58,9 +63,6 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)];
 }
-
-const isIOS = () =>
-  /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 
 // Seconds until the decoded sound first gets within onsetDb of its loudest
 // point: the same measurement scripts/render-sounds.py made on the original.
@@ -82,8 +84,6 @@ export class LaunchSound {
   private gaps: number[] = []; // the start gap measured on each decoded file
   private playing = new Set<AudioBufferSourceNode>();
   private run = 0; // goes up on every start and stop, so sounds from an old run never play
-  private silentClip: HTMLAudioElement | null = null;
-  private silentTimer = 0;
 
   // ---- Before the tap: download and decode everything (no sound plays) ----
   preload() {
@@ -96,20 +96,21 @@ export class LaunchSound {
     } catch {
       decoder = null; // very old browser: we'll decode once the live one exists
     }
-    for (const name of SOUND_NAMES) this.sounds.set(name, this.load(name, decoder));
+    for (const name of introNames()) this.sounds.set(name, this.load(name, decoder));
   }
 
   private async load(name: SoundName, decoder: BaseAudioContext | null): Promise<Loaded | null> {
     try {
-      const response = await fetch(`/sounds/${name}.mp3`);
+      const response = await fetch(soundUrl(name));
       if (!response.ok) return null;
       const data = await response.arrayBuffer();
       const ctx = decoder ?? (await this.liveContext());
       if (!ctx) return null;
       const buffer = await ctx.decodeAudioData(data);
-      const info = (manifest as Manifest)[name];
+      const manifest = soundManifest() as unknown as Manifest;
+      const info = manifest[name];
       const expected = typeof info === "object" ? info.onset : 0;
-      const gap = Math.min(Math.max(measureOnset(buffer, (manifest as Manifest).onsetDb) - expected, 0), 0.1);
+      const gap = Math.min(Math.max(measureOnset(buffer, manifest.onsetDb) - expected, 0), 0.1);
       this.gaps.push(gap);
       return { buffer, gap };
     } catch {
@@ -125,26 +126,23 @@ export class LaunchSound {
 
   // ---- The tap: call from the play button's click handler ----
   start() {
-    this.playEvenOnSilent(); // before any sound is made
-    this.preload(); // in case it hasn't started yet
+    // The engine is made here either way (this IS the tap), so the page's
+    // sounds can use it later, even if the visitor has sound off right now
+    const engine = unlockAudio();
     this.run++;
+    if (!soundOn() || !engine) {
+      this.ctx = null; // sound off: the intro runs silently
+      return;
+    }
+    holdPlaybackSession(INTRO_END); // before any sound is made (see the top)
+    this.preload(); // in case it hasn't started yet
     try {
       if (!this.ctx) {
-        const ctx = new AudioContext();
-        // A safety limiter at the end, so overlapping sounds can never distort
-        const limiter = ctx.createDynamicsCompressor();
-        limiter.threshold.value = -3;
-        limiter.knee.value = 3;
-        limiter.ratio.value = 12;
-        limiter.attack.value = 0.002;
-        limiter.release.value = 0.2;
-        limiter.connect(ctx.destination);
-        const master = ctx.createGain();
-        master.connect(limiter);
-        this.ctx = ctx;
+        const master = engine.ctx.createGain();
+        master.connect(engine.out);
+        this.ctx = engine.ctx;
         this.master = master;
       }
-      if (this.ctx.state === "suspended") void this.ctx.resume();
       this.master!.gain.cancelScheduledValues(this.ctx.currentTime);
       this.master!.gain.setValueAtTime(MASTER, this.ctx.currentTime);
     } catch {
@@ -157,12 +155,13 @@ export class LaunchSound {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     for (const cue of cuesFor(phase, device)) {
-      const gain = MIX[cue.sound];
-      if (gain > 0) void this.play(cue.sound, now + (cue.at ?? 0), gain, cue.rate ?? 1);
+      const gain = MIX[cue.sound] * (cue.gain ?? 1);
+      if (gain > 0) void this.play(cue.sound, now + (cue.at ?? 0), gain, cue.rate ?? 1, cue.pan, cue.follow);
     }
   }
 
-  private async play(name: SoundName, when: number, gain: number, rate: number) {
+  // pan: where it comes from (-1 left ... +1 right); follow: move with the light
+  private async play(name: SoundName, when: number, gain: number, rate: number, pan?: number, follow?: "light") {
     const run = this.run;
     const loaded = await this.sounds.get(name);
     const ctx = this.ctx;
@@ -185,12 +184,23 @@ export class LaunchSound {
     source.playbackRate.value = rate;
     const level = ctx.createGain();
     level.gain.value = gain;
-    source.connect(level).connect(this.master);
+    source.connect(level);
+    let out: AudioNode = level;
+    let panner: StereoPannerNode | null = null;
+    if ((pan !== undefined || follow) && typeof ctx.createStereoPanner === "function") {
+      panner = ctx.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, pan ?? 0));
+      level.connect(panner);
+      out = panner;
+    }
+    out.connect(this.master);
     source.start(startAt, offset);
+    if (follow && panner) followLight(ctx, startAt, (loaded.buffer.duration - offset) / rate, null, panner);
     this.playing.add(source);
     source.onended = () => {
       this.playing.delete(source);
       level.disconnect();
+      panner?.disconnect();
     };
   }
 
@@ -210,34 +220,15 @@ export class LaunchSound {
         // already stopped
       }
     }
-    window.clearTimeout(this.silentTimer);
-    this.silentClip?.pause();
+    releasePlaybackSession();
   }
 
   close() {
+    // (the engine itself stays: it's shared with the page's sounds)
     this.run++;
-    void this.ctx?.close();
+    this.master?.disconnect();
+    this.master = null;
     this.ctx = null;
-    window.clearTimeout(this.silentTimer);
-    this.silentClip?.pause();
-  }
-
-  // Asks to be "playback" (like a video) so the iPhone silent switch doesn't mute us.
-  private playEvenOnSilent() {
-    const session = (navigator as AudioSessionNavigator).audioSession;
-    if (session) {
-      try {
-        session.type = "playback"; // Safari 16.4+
-        return;
-      } catch {
-        // not allowed here: try the older way below
-      }
-    }
-    if (!isIOS()) return; // only iPhones and iPads need the older way
-    this.silentClip ??= Object.assign(new Audio(SILENT_WAV), { loop: true });
-    void this.silentClip.play().catch(() => {}); // no luck: the intro still runs, just maybe muted
-    // Stop it once the intro is over, so it doesn't sit there "playing".
-    window.clearTimeout(this.silentTimer);
-    this.silentTimer = window.setTimeout(() => this.silentClip?.pause(), INTRO_END * 1000);
+    releasePlaybackSession();
   }
 }

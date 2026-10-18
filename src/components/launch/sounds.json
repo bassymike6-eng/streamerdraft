@@ -3,62 +3,122 @@
   "onsetDb": -30,
   "tap": {
     "onset": 8e-05,
-    "length": 1.2583
+    "length": 1.2869
   },
   "grow": {
-    "onset": 0.01773,
-    "length": 2.0412
+    "onset": 0.02375,
+    "length": 2.037
   },
   "lap": {
-    "onset": 6e-05,
+    "onset": 0.00015,
     "length": 2.4
   },
   "lock": {
-    "onset": 0.00017,
-    "length": 4.4774
+    "onset": 0.00013,
+    "length": 4.5323
   },
   "home": {
     "onset": 0.00019,
-    "length": 2.8812
+    "length": 2.8371
   },
   "dock": {
-    "onset": 0.00615,
-    "length": 0.9677
+    "onset": 0.00342,
+    "length": 0.9966
   },
   "pop": {
-    "onset": 6e-05,
-    "length": 0.6003
+    "onset": 0.00013,
+    "length": 0.6379
   },
   "ready": {
-    "onset": 0.00025,
-    "length": 2.3629
+    "onset": 0.00031,
+    "length": 2.5451
   },
   "badge": {
-    "onset": 0.00015,
-    "length": 1.0656
+    "onset": 0.00025,
+    "length": 1.1246
   },
   "press": {
-    "onset": 6e-05,
-    "length": 0.4439
+    "onset": 8e-05,
+    "length": 0.4092
   },
   "launch": {
-    "onset": 0.00156,
-    "length": 1.573
+    "onset": 0.00183,
+    "length": 1.5796
   },
   "load": {
     "onset": 0.00023,
     "length": 0.65
   },
   "title": {
-    "onset": 6e-05,
-    "length": 4.0025
+    "onset": 0.0001,
+    "length": 4.6167
   },
   "title-dock": {
-    "onset": 0.00144,
-    "length": 2.3835
+    "onset": 0.00162,
+    "length": 2.3845
   },
   "bed": {
-    "onset": 0.13725,
+    "onset": 0.1376,
     "length": 7.1
+  },
+  "hero-swell": {
+    "onset": 0.02575,
+    "length": 0.85
+  },
+  "hero-yet": {
+    "onset": 6e-05,
+    "length": 2.3082
+  },
+  "ui-open": {
+    "onset": 0.00133,
+    "length": 1.1495
+  },
+  "ui-close": {
+    "onset": 0.00175,
+    "length": 0.8277
+  },
+  "ui-step": {
+    "onset": 0.00015,
+    "length": 1.404
+  },
+  "ui-sent": {
+    "onset": 0.01158,
+    "length": 2.0451
+  },
+  "ui-success": {
+    "onset": 0.00029,
+    "length": 2.9462
+  },
+  "ui-error": {
+    "onset": 0.00021,
+    "length": 0.8967
+  },
+  "ui-copy": {
+    "onset": 6e-05,
+    "length": 0.8114
+  },
+  "ui-tick-on-1": {
+    "onset": 8e-05,
+    "length": 0.14
+  },
+  "ui-tick-on-2": {
+    "onset": 8e-05,
+    "length": 0.14
+  },
+  "ui-tick-on-3": {
+    "onset": 8e-05,
+    "length": 0.14
+  },
+  "ui-tick-off-1": {
+    "onset": 0.0001,
+    "length": 0.1343
+  },
+  "ui-tick-off-2": {
+    "onset": 8e-05,
+    "length": 0.1338
+  },
+  "ui-tick-off-3": {
+    "onset": 0.0001,
+    "length": 0.1332
   }
 }

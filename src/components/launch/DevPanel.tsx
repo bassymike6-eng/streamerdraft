@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { BRAND_FONT, FONTS, titleText, type FontId } from "@/lib/brand-font";
-import type { Visitor } from "./detect";
+import { applyUrlOverrides, lookFromClock, type Visitor } from "./detect";
 import type { FontPick } from "./LaunchIntro";
 import styles from "./LaunchIntro.module.css";
 
@@ -46,6 +46,13 @@ export function DevPanel({ visitor, onChange, font, fontLoaded, onFont }: {
     );
   }
 
+  // The look: forced by ?look= in the URL, or picked by the clock (what visitors get).
+  // clockLook also respects ?hour= (for testing a time of day).
+  const params = new URLSearchParams(window.location.search);
+  const lookForced = params.has("look");
+  params.delete("look");
+  const clockLook = applyUrlOverrides({ ...visitor, look: lookFromClock() }, `?${params}`).look;
+
   const setDevice = (choice: DeviceChoice) => {
     syncUrl("device", choice);
     const next: Visitor = { ...visitor, forced: true };
@@ -70,15 +77,23 @@ export function DevPanel({ visitor, onChange, font, fontLoaded, onFont }: {
       </label>
       <label>
         Look
+        {/* "Clock" is what visitors get. Dark / Bright force it (?look= in the URL),
+            and that sticks through refreshes until you pick Clock again. */}
         <select
-          value={visitor.look}
+          value={lookForced ? visitor.look : "clock"}
           onChange={(e) => {
+            if (e.target.value === "clock") {
+              window.history.replaceState(null, "", `?${params}`); // the URL without ?look=
+              onChange({ ...visitor, look: clockLook });
+              return;
+            }
             syncUrl("look", e.target.value);
             onChange({ ...visitor, look: e.target.value as Visitor["look"] });
           }}
         >
-          <option value="dark">Dark</option>
-          <option value="bright">Bright</option>
+          <option value="clock">Clock ({clockLook} right now)</option>
+          <option value="dark">Dark (forced)</option>
+          <option value="bright">Bright (forced)</option>
         </select>
       </label>
       <label>

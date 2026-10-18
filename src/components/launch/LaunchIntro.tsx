@@ -4,7 +4,8 @@
 // The F1 intro, start to finish:
 //   black screen + play button -> the red light grows out to the screen edge
 //   -> home screen -> our app opens out of its icon -> browser loads
-//   -> STREAMERDRAFT -> it docks top left -> the page's loading placeholders.
+//   -> STREAMERDRAFT -> it docks top left as the logo -> the page loads in
+//   (the page itself: src/components/page/SitePage.tsx).
 //
 // HOW IT'S BUILT
 // This file only keeps track of WHERE we are (the phase) and WHAT the visitor
@@ -28,11 +29,18 @@ import { DevPanel } from "./DevPanel";
 import { EdgeLight } from "./EdgeLight";
 import { computeGeometry, geometryVars, type Geometry } from "./geometry";
 import { HomeScreen } from "./HomeScreen";
-import { SkeletonPage } from "./SkeletonPage";
+import { SitePage, type PageStage } from "@/components/page/SitePage";
+import { LaunchSoundV3 } from "../sound/launch";
 import { LaunchSound } from "./sound";
+import { isLiveSet } from "./soundSet";
 import { homeVars, PHASE_TIMES, reachedPhases, type Phase } from "./timeline";
-import { Wordmark } from "./Wordmark";
+import { LogoMark, Wordmark } from "./Wordmark";
 import styles from "./LaunchIntro.module.css";
+
+// The intro's sound player: v3 (made live) or the v1 / v2 files (soundSet.ts).
+// Both have the same five controls.
+type IntroSound = Pick<LaunchSound, "preload" | "start" | "cue" | "stop" | "close">;
+const makeSound = (): IntroSound => (isLiveSet() ? new LaunchSoundV3() : new LaunchSound());
 
 // Anton: the fallback under the brand font (and the brand font itself while BRAND_FONT is "anton")
 const anton = Anton({ weight: "400", subsets: ["latin"], variable: "--font-anton" });
@@ -52,6 +60,14 @@ function geometryFor(v: Visitor, wordRatio: number) {
   return computeGeometry(v.device, v.dockStyle, v.forced, wordRatio);
 }
 
+// Where the page is at, from the intro's phase: hidden until the title docks,
+// loading boxes while it docks, then the real content once the intro's done.
+function pageStage(phase: Phase): PageStage {
+  if (phase === "done") return "content";
+  if (phase === "dock") return "skeleton";
+  return "hidden";
+}
+
 function makeSetup(visitor: Visitor, wordRatio: number): Setup {
   return { visitor, geometry: geometryFor(visitor, wordRatio), now: new Date() };
 }
@@ -66,7 +82,7 @@ export default function LaunchIntro() {
 
   const root = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
-  const sound = useRef<LaunchSound | null>(null);
+  const sound = useRef<IntroSound | null>(null);
   // The title's width / height in the brand font. A ref, so the size maths
   // (done in effects and click handlers, not while rendering) always gets the latest one.
   const wordRatio = useRef(DEFAULT_WORD_BOX.width / DEFAULT_WORD_BOX.height);
@@ -100,7 +116,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
     // (a moment after the page shows, so they don't slow the first paint).
     const preload = window.setTimeout(() => {
       if (prefersReducedMotion()) return; // no intro, so no sounds
-      sound.current ??= new LaunchSound();
+      sound.current ??= makeSound();
       sound.current.preload();
     }, 300);
     return () => {
@@ -152,7 +168,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
     // Sound has to start inside the click, or the browser blocks it.
     // Each scene's sounds are in soundCues.ts.
-    sound.current ??= new LaunchSound();
+    sound.current ??= makeSound();
     sound.current.start();
     sound.current.cue("tap", visitor.device);
 
@@ -234,7 +250,10 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
               <svg viewBox="0 0 22 28"><path d="M2 2 L2 23 L7.5 17.8 L11.4 26 L15 24.4 L11.2 16.4 L19 16.2 Z" fill="#fff" stroke="#111" strokeWidth="1.6" strokeLinejoin="round" /></svg>
             </div>
             <AppWindow />
-            <SkeletonPage running={phase === "dock" || phase === "done"} />
+            <div className={`${styles.layer} ${styles.site}`}>
+              {/* the docked title's twin, which the page keeps as its logo */}
+              <SitePage stage={pageStage(phase)} logo={<LogoMark text={font.text} box={word.box} />} />
+            </div>
             <Wordmark text={font.text} box={word.box} />
           </>
         )}
@@ -254,7 +273,9 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
         <p className={styles.hint}>Tap to start</p>
 
         <button className={styles.skip} type="button" onClick={skip}>Skip intro</button>
-        <button className={styles.replay} type="button" onClick={replay}>Replay</button>
+        {/* Replay: only while we work on it (npm run dev). On the live site it would sit
+            on top of the page; a "watch the intro again" link can go in the footer (F4). */}
+        {SHOW_DEV_PANEL && <button className={styles.replay} type="button" onClick={replay}>Replay</button>}
       </div>
 
       {SHOW_DEV_PANEL && visitor && (

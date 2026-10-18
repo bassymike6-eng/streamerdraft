@@ -1,0 +1,156 @@
+/* src/components/page/Sheet.module.css
+
+   The pop-up (Sheet.tsx): a sheet from the bottom on phones, a card in the
+   middle on bigger screens, growing out of whatever was tapped. Colours follow
+   the page's dark / bright look (the <dialog> sits inside the intro's root, so
+   it gets the same --ink, --red...).
+
+   SECTIONS
+   1. The pop-up itself         3. What's inside (title, close, body, footer)
+   2. Growing / shrinking       4. Loading shapes -> content
+                                5. Bigger screens
+
+   Why ":modal" on some rules: the browser's own <dialog> styles use "dialog:modal",
+   which beats a plain class. ".sheet:modal" is a notch stronger, so ours win. */
+
+/* =============== 1. The pop-up itself =============== */
+.sheet {
+  --sheet-bg: #1C1C1E;
+  --sheet-card: #2C2C2E; /* a grouped box inside it */
+  --sheet-line: rgba(255, 255, 255, .1);
+  --sheet-soft: rgba(255, 255, 255, .1);
+  --sheet-sk: #2E2E32; /* loading shapes */
+  --sheet-ink2: rgba(255, 255, 255, .72);
+  padding: 0;
+  border: 0;
+  background: var(--sheet-bg);
+  color: var(--ink, #fff);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+[data-look="bright"] .sheet {
+  --sheet-bg: #FFFFFF;
+  --sheet-card: #F2F2F7;
+  --sheet-line: rgba(0, 0, 0, .08);
+  --sheet-soft: rgba(0, 0, 0, .06);
+  --sheet-sk: #ECECF0;
+  --sheet-ink2: rgba(0, 0, 0, .6);
+}
+
+/* Phone: a sheet from the bottom */
+.sheet:modal {
+  position: fixed;
+  inset: auto 0 0 0;
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: min(88dvh, 760px);
+  overflow: hidden;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -1px 0 var(--sheet-line), 0 -24px 60px rgba(0, 0, 0, .35);
+  /* --drag: how far your finger has pulled it down (Sheet.tsx) */
+  translate: 0 var(--drag, 0px);
+  transition: translate .45s cubic-bezier(.32, .72, 0, 1);
+}
+.sheet[open] { display: flex; animation: sheetUp .5s cubic-bezier(.32, .72, 0, 1) both; }
+.sheet[data-closing] { animation: sheetDown .38s cubic-bezier(.32, .72, 0, 1) both; }
+.sheet[data-dragging] { transition: none; }
+.sheet::backdrop { background: rgba(0, 0, 0, .5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: dimIn .4s ease both; }
+.sheet[data-closing]::backdrop { animation: dimOut .38s ease both; }
+
+/* the red light round its edge (drawn by useBoxLights.ts), and what's inside */
+.light { position: absolute; inset: 0; z-index: 6; width: 100%; height: 100%; pointer-events: none; transition: opacity .2s ease; }
+.panel { position: relative; width: 100%; max-height: inherit; border-radius: inherit; display: flex; flex-direction: column; min-height: 0; transition: opacity .2s ease; }
+
+/* =============== 2. Growing out of the box / shrinking back in ===============
+   Sheet.tsx animates the frame's position, size and corners itself; these just
+   switch off the usual slide and pop while it does. Closing, the contents and
+   the light fade first, so it's just the frame that goes back into the box. */
+.sheet[data-morph],
+.sheet[data-morph][data-closing] { animation: none; translate: none; transition: none; }
+.sheet[data-morph][data-closing] :is(.panel, .light) { opacity: 0; transition: opacity .14s ease; }
+.sheet[data-morph] .panel { flex-shrink: 0; }
+
+/* =============== 3. What's inside =============== */
+.top { flex-shrink: 0; touch-action: none; cursor: grab; }
+.grab { display: block; width: 38px; height: 5px; margin: 8px auto 0; border-radius: 3px; background: color-mix(in srgb, var(--ink, #fff) 28%, transparent); }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 20px 14px 24px; }
+.titles { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.title { margin: 0; font-size: 20px; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; }
+.subtitle { margin: 0; font-size: 14px; line-height: 1.4; color: var(--sheet-ink2); }
+.close {
+  flex-shrink: 0; width: 32px; height: 32px; margin-top: -2px; border: 0; border-radius: 50%; padding: 0;
+  background: var(--sheet-soft); color: var(--sheet-ink2); display: grid; place-items: center; cursor: pointer;
+}
+.close:hover { color: var(--ink); }
+.close svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.close:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 4px 24px calc(28px + env(safe-area-inset-bottom));
+  font-size: 17px; line-height: 1.6;
+}
+.body > p { margin: 0 0 1em; max-width: 36em; } /* (just its own paragraphs, like the transcript) */
+.body > p:last-child { margin-bottom: 0; }
+.foot { flex-shrink: 0; padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--sheet-line); display: flex; justify-content: center; }
+.body:has(+ .foot) { padding-bottom: 20px; } /* the bar at the bottom already leaves room */
+
+/* =============== 4. Loading shapes -> content ===============
+   The same idea as the page's (Page.module.css): while it opens, each part is
+   a grey shape, pulsing; then each fills in at its turn (--n, quick: 70 ms apart).
+     slot.text  words: grey lines where the lines of text will be
+     slot.box   a box: a plain grey box, its insides hidden */
+.slot { --at: calc(.04s + var(--n, 0) * .07s); }
+.slotText { position: relative; }
+.slotText::before {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
+  background: repeating-linear-gradient(to bottom, transparent 0 .2lh, var(--sheet-sk) .2lh .8lh, transparent .8lh 1lh);
+}
+.panel:not([data-stage="content"]) :is(.slotText, .slotText *) { color: transparent !important; }
+.panel:not([data-stage="content"]) .slotText::before { opacity: 1; }
+.panel:not([data-stage="content"]) .slotBox { background-color: var(--sheet-sk) !important; box-shadow: none !important; color: transparent !important; }
+.panel:not([data-stage="content"]) .slotBox > * { opacity: 0; }
+.panel[data-stage="skeleton"] .slotText::before,
+.panel[data-stage="skeleton"] .slotBox { animation: pulse 1.6s ease-in-out infinite; }
+
+.panel[data-stage="content"] .slotText::before { animation: slotOut .3s ease var(--at) both; }
+.panel[data-stage="content"] .slotText { animation: textIn .4s ease var(--at) both; }
+.panel[data-stage="content"] .slotBox { animation: boxIn .45s ease var(--at) both; }
+.panel[data-stage="content"] .slotBox > * { animation: innerIn .5s cubic-bezier(.2, .8, .2, 1) calc(var(--at) + .04s) both; }
+
+/* =============== 5. Bigger screens: a card in the middle =============== */
+@media (min-width: 720px) {
+  .sheet:modal {
+    inset: 0;
+    margin: auto;
+    width: min(560px, calc(100% - 48px));
+    max-height: min(84dvh, 760px);
+    border-radius: 28px;
+    box-shadow: 0 0 0 1px var(--sheet-line), 0 40px 100px rgba(0, 0, 0, .45);
+    translate: none;
+  }
+  .sheet[open] { animation: popIn .42s cubic-bezier(.3, 1.25, .5, 1) both; }
+  .sheet[data-closing] { animation: popOut .22s ease both; }
+  .top { cursor: auto; touch-action: auto; }
+  .grab { display: none; }
+  .head { padding: 24px 22px 16px 28px; }
+  .title { font-size: 22px; }
+  .body { padding: 4px 28px 30px; }
+}
+
+@keyframes sheetUp { from { transform: translateY(100%); } }
+@keyframes sheetDown { to { transform: translateY(100%); } }
+@keyframes popIn { from { opacity: 0; transform: scale(.94); } }
+@keyframes popOut { to { opacity: 0; transform: scale(.97); } }
+@keyframes dimIn { from { opacity: 0; } }
+@keyframes dimOut { to { opacity: 0; } }
+@keyframes pulse { 50% { opacity: .55; } }
+@keyframes slotOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes textIn { from { color: transparent; } }
+@keyframes boxIn { from { background-color: var(--sheet-sk); box-shadow: none; color: transparent; } }
+@keyframes innerIn { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet *, .sheet *::before, .sheet::backdrop { animation: none !important; transition: none !important; }
+}

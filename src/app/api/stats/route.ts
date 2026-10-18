@@ -5,20 +5,18 @@
 //   GET http://localhost:3000/api/stats
 //
 // WHAT IT SENDS BACK
-//   {
-//     "ok": true,
-//     "roadTo300": { "count": 5, "goal": 300 },
-//     "leaderboard": [ { "rank": 1, "displayName": "Bravo", "recruits": 2 }, ... ]
-//   }
+//   { "ok": true, "roadTo300": { "count": 5, "goal": 300 } }
 //
 // THINGS TO KNOW
 // - It's a GET, so you can open it straight in your browser to check it.
 // - Next.js doesn't cache GET routes by default (since version 15), so every
-//   visit runs the queries again and the numbers are always fresh.
-// - Only names and counts go out. Never emails, codes or countries.
+//   visit runs the query again and the number is always fresh.
+// - No leaderboard (F2): the winner's revealed live on stream, so nothing
+//   public says who's winning. The full board is admin-only
+//   (/api/admin/leaderboard).
 
 import { NextResponse } from "next/server";
-import { getLeaderboard, getRoadTo300 } from "@/lib/stats";
+import { getRoadTo300 } from "@/lib/stats";
 import { limitByIp } from "@/lib/rate-limit";
 
 export async function GET(request: Request) {
@@ -28,11 +26,8 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   try {
-    // Promise.all runs both queries at the same time instead of one
-    // after the other, so the page waits for the slower one, not both.
-    const [roadTo300, leaderboard] = await Promise.all([getRoadTo300(), getLeaderboard()]);
-
-    return NextResponse.json({ ok: true, roadTo300, leaderboard });
+    const roadTo300 = await getRoadTo300();
+    return NextResponse.json({ ok: true, roadTo300 });
   } catch (error) {
     console.error("[stats] unexpected error:", error);
     return NextResponse.json(

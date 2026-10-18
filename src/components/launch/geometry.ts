@@ -112,10 +112,12 @@ export function computeGeometry(device: Device, dockStyle: DockStyle, forced: bo
   // would otherwise fill it), and the logo never taller than the header allows.
   const titleW = Math.min(W * (device === "phone" ? 0.84 : 0.7), 900, H * 0.3 * wordRatio);
   const titleH = titleW / wordRatio;
-  const pad = device === "phone" ? 20 : device === "tablet" ? 28 : 32;
-  const headerH = device === "phone" ? 64 : 76;
+  // the page's side margin: computers get more room, growing with the screen (up to 72px)
+  const pad = device === "phone" ? 20 : device === "tablet" ? 28 : Math.round(Math.min(72, Math.max(32, W * 0.055)));
+  // (a little shorter on short screens, so the page fits without scrolling)
+  const headerH = device === "phone" ? (H < 700 ? 56 : 64) : H < 700 ? 64 : 76;
   const logoW = Math.min(device === "phone" ? 150 : device === "tablet" ? 168 : 180, (headerH - 20) * wordRatio);
-  const contentLeft = Math.max(0, (W - 1120) / 2) + pad; // page content is max 1120px wide
+  const contentLeft = Math.max(0, (W - 1440) / 2) + pad; // the page's header is max 1440px wide (Page.module.css)
 
   return {
     W, H, k, framed, frameRadius,

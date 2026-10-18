@@ -1,0 +1,72 @@
+{
+  "_about": "Made by scripts/render-sounds.py: where each sound really starts (see onset())",
+  "onsetDb": -30,
+  "tap": {
+    "onset": 8e-05,
+    "length": 1.2583
+  },
+  "grow": {
+    "onset": 0.01773,
+    "length": 2.0412
+  },
+  "lap": {
+    "onset": 6e-05,
+    "length": 2.4
+  },
+  "lock": {
+    "onset": 0.00017,
+    "length": 4.4774
+  },
+  "home": {
+    "onset": 0.00019,
+    "length": 2.8812
+  },
+  "dock": {
+    "onset": 0.00615,
+    "length": 0.9677
+  },
+  "pop": {
+    "onset": 6e-05,
+    "length": 0.6003
+  },
+  "ready": {
+    "onset": 0.00025,
+    "length": 2.3629
+  },
+  "badge": {
+    "onset": 0.00015,
+    "length": 1.0656
+  },
+  "press": {
+    "onset": 6e-05,
+    "length": 0.4439
+  },
+  "launch": {
+    "onset": 0.00156,
+    "length": 1.573
+  },
+  "load": {
+    "onset": 0.00023,
+    "length": 0.65
+  },
+  "title": {
+    "onset": 6e-05,
+    "length": 4.0025
+  },
+  "title-dock": {
+    "onset": 0.00144,
+    "length": 2.3835
+  },
+  "bed": {
+    "onset": 0.13725,
+    "length": 7.1
+  },
+  "hero-swell": {
+    "onset": 0.02627,
+    "length": 0.85
+  },
+  "hero-yet": {
+    "onset": 4e-05,
+    "length": 2.0085
+  }
+}

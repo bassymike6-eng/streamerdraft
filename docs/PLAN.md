@@ -62,15 +62,15 @@ Built by a streamer, for streamers: get scouted, get drafted, get developed.
   - [x] 4. Tests (requests/scouts.http) + commit
 
 ## Front end (target: Fri 16 Oct, deadline: Mon 19 Oct)
-- [ ] F1 Intro animation (slower than v2, better streamer depiction)
-- [ ] F2 Hero (the founder story) + sign-up form ("?" on each field,
+- [x] F1 Intro animation (slower than v2, better streamer depiction)
+- [x] F2 Hero (the founder story) + sign-up form ("?" on each field,
       scout application questions, Turnstile widget)
       + /r/[code] recruit link page (remembers who sent them)
       + /confirm page (rules tick + Enter)
       + "You're in" screen (recruit link, entry status, counted/pending recruits)
-- [ ] F3 Prospect card, Road to 300, leaderboard, footer
-- [ ] F4 Privacy + competition rules pages
-- [ ] F5 Admin dashboard (/admin): login, overview cards + graphs,
+- [x] F3 Prospect card, Road to 300, leaderboard, footer
+- [x] F4 Privacy + competition rules pages
+- [x] F5 Admin dashboard (/admin): login, overview cards + graphs,
       people table -> person page (disqualify, notes, delete, approve scouts),
       full leaderboard + red flags, "Download CSV" button
 

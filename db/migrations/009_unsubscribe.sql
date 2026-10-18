@@ -1,0 +1,22 @@
+-- db/migrations/009_unsubscribe.sql
+--
+-- WHAT THIS DOES (the unsubscribe link, F5)
+--
+-- Every email we send about the launch, or news and offers, carries a
+-- personal "Unsubscribe" link (src/lib/unsubscribe.ts). Pressing it fills in
+-- this column, and from then on they're left off both email lists the admin
+-- dashboard downloads (the launch email, and news and offers).
+--
+--   unsubscribed_at   when they unsubscribed (empty = still happy to hear from us)
+--
+-- Unsubscribing also turns marketing_opt_in off: they've taken back their
+-- "send me news and offers" tick.
+--
+-- They stay in the competition: unsubscribing only stops the emails they
+-- don't need. If they win, we still email them about the prize (the privacy
+-- policy says so).
+--
+-- The admin_signups view (005-008) doesn't need it: the few places that show
+-- it read it straight from signups.
+
+ALTER TABLE signups ADD COLUMN unsubscribed_at TIMESTAMPTZ;
