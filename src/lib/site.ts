@@ -19,4 +19,4 @@ export const PROMOTER_NAME = "Bassy Mike";
 export const PROMOTER_ADDRESS = "Milton Keynes ";
 
 // The email people can contact you on about StreamerDraft
-export const CONTACT_EMAIL = "bassymike6@gmail.com";
+export const CONTACT_EMAIL = "hello@streamerdraft.com";
