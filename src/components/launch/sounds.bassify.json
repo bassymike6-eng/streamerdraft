@@ -1,0 +1,12 @@
+{
+  "_about": "Made by scripts/render-bassify.py: where the bassline really starts (see onset() in render-sounds.py)",
+  "onsetDb": -30,
+  "bass": {
+    "onset": 0.00015,
+    "length": 13.6
+  },
+  "bass-phone": {
+    "onset": 0.00021,
+    "length": 13.6
+  }
+}

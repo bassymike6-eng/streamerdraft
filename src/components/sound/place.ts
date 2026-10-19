@@ -12,14 +12,15 @@
 
 import { lightSpot } from "./lightSpot";
 
-// Moves a sound with the intro's light, every frame it's playing
-export function followLight(ctx: AudioContext, from: number, seconds: number, tone: BiquadFilterNode | null, panner: StereoPannerNode | null) {
+// Moves a sound with the intro's light, every frame it's playing. reach: how
+// far it may swing left and right (1 = all the way; v1+ keeps it gentle)
+export function followLight(ctx: AudioContext, from: number, seconds: number, tone: BiquadFilterNode | null, panner: StereoPannerNode | null, reach = 0.85) {
   const end = from + seconds;
   const step = () => {
     const now = ctx.currentTime;
     if (now > end) return;
     if (now >= from - 0.05) {
-      panner?.pan.setTargetAtTime((lightSpot.x * 2 - 1) * 0.85, now, 0.03);
+      panner?.pan.setTargetAtTime((lightSpot.x * 2 - 1) * reach, now, 0.03);
       // brighter at the top of the screen, darker at the bottom
       tone?.frequency.setTargetAtTime(2200 + 9000 * (1 - lightSpot.y) ** 1.3, now, 0.04);
     }

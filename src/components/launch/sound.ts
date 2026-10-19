@@ -22,8 +22,8 @@
 // button IS that tap, so start() must be called inside its click handler.
 //
 // WHICH VERSION, AND SOUND OFF
-// The files come from the version soundSet.ts picks (v5, or v2 / v1 with
-// ?sounds=v2 / ?sounds=v1). If the visitor has turned sound off (the footer's Sound
+// The files come from the version soundSet.ts picks (Bassify, or another
+// with ?sounds=v5 / v1plus / v2 / v1). If the visitor has turned sound off (the footer's Sound
 // button), the intro plays silently. The audio engine is shared with the
 // page's own sounds (uiSound.ts), so the page can use it once the intro's over.
 //
@@ -41,7 +41,7 @@
 import type { Device } from "./detect";
 import { cuesFor, introNames, MIX, type SoundName } from "./soundCues";
 import { followLight } from "../sound/place";
-import { holdPlaybackSession, releasePlaybackSession, soundManifest, soundOn, soundUrl, unlockAudio } from "./soundSet";
+import { holdPlaybackSession, isGentle, releasePlaybackSession, soundManifest, soundOn, soundUrl, unlockAudio } from "./soundSet";
 import { PHASE_TIMES, type Phase } from "./timeline";
 
 // When the intro has finished (plus time for the last sounds to ring out).
@@ -156,27 +156,31 @@ export class LaunchSound {
     const now = this.ctx.currentTime;
     for (const cue of cuesFor(phase, device)) {
       const gain = MIX[cue.sound] * (cue.gain ?? 1);
-      if (gain > 0) void this.play(cue.sound, now + (cue.at ?? 0), gain, cue.rate ?? 1, cue.pan, cue.follow);
+      if (gain > 0) void this.play(cue.sound, now + (cue.at ?? 0), gain, cue.rate ?? 1, cue.pan, cue.follow, cue.slice);
     }
   }
 
-  // pan: where it comes from (-1 left ... +1 right); follow: move with the light
-  private async play(name: SoundName, when: number, gain: number, rate: number, pan?: number, follow?: "light") {
+  // pan: where it comes from (-1 left ... +1 right); follow: move with the light;
+  // slice: play only this stretch of the file (seconds into it)
+  private async play(name: SoundName, when: number, gain: number, rate: number, pan?: number, follow?: "light", slice?: [number, number?]) {
     const run = this.run;
     const loaded = await this.sounds.get(name);
     const ctx = this.ctx;
     if (!loaded || !ctx || !this.master || run !== this.run) return;
     // skip the browser's start gap (the middle value across all files, or this
     // file's own if it's the only one measured so far)
-    let offset = this.gaps.length >= 3 ? median(this.gaps) : loaded.gap;
+    let offset = (this.gaps.length >= 3 ? median(this.gaps) : loaded.gap) + (slice?.[0] ?? 0);
+    // how much of the file to play (seconds of the file): all of it, or the slice
+    let span = (slice?.[1] ?? loaded.buffer.duration) - (slice?.[0] ?? 0);
     let startAt = when;
     const late = ctx.currentTime - when;
     if (late > 0) {
       // Still decoding when its moment came: start partway in to stay in sync,
       // unless it's so late (or so short) that it would just sound wrong.
-      const length = loaded.buffer.duration / rate;
+      const length = span / rate;
       if (late > Math.min(length * 0.4, 1)) return;
       offset += late * rate;
+      span -= late * rate;
       startAt = ctx.currentTime;
     }
     const source = ctx.createBufferSource();
@@ -184,6 +188,15 @@ export class LaunchSound {
     source.playbackRate.value = rate;
     const level = ctx.createGain();
     level.gain.value = gain;
+    if (slice) {
+      // a stretch cut from the middle of a file: a few milliseconds' fade at
+      // each end, so the cuts never click
+      const end = startAt + span / rate;
+      level.gain.setValueAtTime(0, startAt);
+      level.gain.linearRampToValueAtTime(gain, startAt + 0.004);
+      level.gain.setValueAtTime(gain, Math.max(startAt + 0.004, end - 0.008));
+      level.gain.linearRampToValueAtTime(0, end);
+    }
     source.connect(level);
     let out: AudioNode = level;
     let panner: StereoPannerNode | null = null;
@@ -194,8 +207,10 @@ export class LaunchSound {
       out = panner;
     }
     out.connect(this.master);
-    source.start(startAt, offset);
-    if (follow && panner) followLight(ctx, startAt, (loaded.buffer.duration - offset) / rate, null, panner);
+    if (slice) source.start(startAt, offset, span);
+    else source.start(startAt, offset);
+    // (v1+ and Bassify keep the light-following lap gentle: it swings less than half as far)
+    if (follow && panner) followLight(ctx, startAt, (loaded.buffer.duration - offset) / rate, null, panner, isGentle() ? 0.38 : 0.85);
     this.playing.add(source);
     source.onended = () => {
       this.playing.delete(source);

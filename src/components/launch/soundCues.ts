@@ -25,7 +25,14 @@
 //   done                page    "Nobody's watching." near silence, "Yet." hits,
 //                               soft pops as the boxes fill, the gear landing
 //
-// v2 (the sound before: ?sounds=v2) and v1 (?sounds=v1) use the cue sheet
+// BASSIFY (what everyone hears) is v1+ (v1, polished: public/sounds/v1plus/,
+// scripts/make-v1plus.py) with a bassline under it all (public/sounds/bassify/,
+// scripts/render-bassify.py). The bassline is ONE file, played a scene at a
+// time: each scene plays its own stretch of it, from when that scene starts,
+// so it stays locked to the picture. Phones get the version made for phone
+// speakers (bass-phone).
+//
+// v1+ (?sounds=v1plus), v2 (?sounds=v2) and v1 (?sounds=v1) use the cue sheet
 // below, a sound for every moment, each from where it is on the screen:
 //
 //   scene                             sound          timed from
@@ -58,10 +65,10 @@
 //   the script with --only=<name> so it re-measures where the file starts.
 // TO MAKE ONE LOUDER OR QUIETER (or mute it): change its number in MIX.
 
-import type { Device } from "./detect";
+import { applyUrlOverrides, detectVisitor, type Device } from "./detect";
 import { panFor } from "../sound/place";
-import { soundSet } from "./soundSet";
-import { HOME, LED, PAGE_ORDER, REVEAL, revealAt, type Phase } from "./timeline";
+import { isGentle, isV1, soundSet } from "./soundSet";
+import { HOME, LED, PAGE_ORDER, PHASE_TIMES, REVEAL, revealAt, type Phase } from "./timeline";
 
 // v1 and v2's intro sounds (the sound board lists these)
 export const SOUND_NAMES = [
@@ -70,10 +77,23 @@ export const SOUND_NAMES = [
 ] as const;
 // v5's eight scenes
 export const V5_NAMES = ["light", "lock", "home", "open", "load", "title", "dock", "page"] as const;
-export type SoundName = (typeof SOUND_NAMES)[number] | (typeof V5_NAMES)[number];
+// Bassify's bassline: for computers, tablets and headphones, and for phones
+export const BASS_NAMES = ["bass", "bass-phone"] as const;
+export type SoundName = (typeof SOUND_NAMES)[number] | (typeof V5_NAMES)[number] | (typeof BASS_NAMES)[number];
 
-// The files the intro needs, for the version that's playing
-export const introNames = (): readonly SoundName[] => (soundSet() === "v5" ? V5_NAMES : SOUND_NAMES);
+// Which bassline a device gets. Phone speakers can't play deep bass at all,
+// so the phone one has less of it and more of the growl and the overtones a
+// phone CAN play (render-bassify.py). With earphones in it's just a touch brighter.
+const bassFor = (device: Device): SoundName => (device === "phone" ? "bass-phone" : "bass");
+
+// The files the intro needs, for the version that's playing (Bassify loads
+// only the bassline this device will play)
+export function introNames(): readonly SoundName[] {
+  const set = soundSet();
+  if (set === "v5") return V5_NAMES;
+  if (set !== "bassify" || typeof window === "undefined") return SOUND_NAMES;
+  return [...SOUND_NAMES, bassFor(applyUrlOverrides(detectVisitor(), window.location.search).device)];
+}
 
 // How loud each sound plays: 1 = as made, 0.5 = about 6 dB quieter, 0 = off.
 export const MIX: Record<SoundName, number> = {
@@ -82,6 +102,7 @@ export const MIX: Record<SoundName, number> = {
   press: 1, launch: 1, load: 1, title: 1, "title-dock": 1,
   "hero-swell": 1, "hero-yet": 1,
   light: 1, open: 1, page: 1,
+  bass: 1, "bass-phone": 1,
 };
 
 // The page's boxes, in the order they fill in: each gets a pop, right as it lands
@@ -105,6 +126,7 @@ export type Cue = {
   pan?: number; // where it comes from: -1 left ... +1 right (default: the middle)
   gain?: number; // a share of its usual volume (default 1)
   follow?: "light"; // moves with the intro's red light (sound/place.ts)
+  slice?: [number, number?]; // play only this stretch of the file (seconds into it; to the end if no second number)
 };
 
 // How many apps each dock has (PhoneHome.tsx and HomeScreen.tsx), for the pops,
@@ -125,7 +147,7 @@ const POP_STEPS = [0, 2, 4, 7, 9, 12, 14];
 const GEAR_STEPS = [5, 9, 12, 17];
 function gearPops(): Cue[] {
   if (typeof document === "undefined") return [];
-  const pops = PAGE_POPS_BY_SET[soundSet() === "v1" ? "v1" : "v2"];
+  const pops = PAGE_POPS_BY_SET[isV1() ? "v1" : "v2"];
   const shown = [...document.querySelectorAll<HTMLElement>("[data-gear]")].filter((el) => el.getClientRects().length > 0);
   return shown.map((el, k): Cue => {
     const i = Number(el.dataset.gear) || 0;
@@ -144,8 +166,30 @@ function cuesV5(phase: Phase): Cue[] {
   return sound ? [{ sound }] : [];
 }
 
+// Bassify: this scene's stretch of the bassline, from when the scene starts
+// in the file to when the next one does. (Each stretch starts on a new note,
+// so if a busy phone starts a scene a few milliseconds late, the gap can't be
+// heard, and the bass is still exactly on the picture.)
+function bassCue(phase: Phase, device: Device): Cue[] {
+  const scenes = [{ phase: "tap" as Phase, at: 0 }, ...PHASE_TIMES];
+  const i = scenes.findIndex((s) => s.phase === phase);
+  if (i < 0) return [];
+  return [{ sound: bassFor(device), slice: [scenes[i].at, scenes[i + 1]?.at] }];
+}
+
+// v1+ and Bassify: v1's cue sheet, with everything placed left or right only
+// 60% as far (the light-following lap is kept gentle too: sound.ts)
+const GENTLE = 0.6;
 export function cuesFor(phase: Phase, device: Device): Cue[] {
-  if (soundSet() === "v5") return cuesV5(phase);
+  const set = soundSet();
+  if (set === "v5") return cuesV5(phase);
+  let cues = cueSheet(phase, device);
+  if (isGentle(set)) cues = cues.map((c) => (c.pan === undefined ? c : { ...c, pan: c.pan * GENTLE }));
+  return set === "bassify" ? [...bassCue(phase, device), ...cues] : cues;
+}
+
+// v1, v1+ and v2: a sound for every moment, each from where it is on the screen
+function cueSheet(phase: Phase, device: Device): Cue[] {
   switch (phase) {
     case "tap":
       // (the lap follows the light round the screen, left to right)
@@ -180,7 +224,7 @@ export function cuesFor(phase: Phase, device: Device): Cue[] {
         { sound: "hero-swell", at: REVEAL.headline },
         { sound: "hero-yet", at: REVEAL.yet },
         ...PAGE_POPS.map((n, i): Cue => {
-          const pops = PAGE_POPS_BY_SET[soundSet() === "v1" ? "v1" : "v2"];
+          const pops = PAGE_POPS_BY_SET[isV1() ? "v1" : "v2"];
           // each from where that part of the page is (data-pop={its n})
           const where = typeof document === "undefined" ? null : document.querySelector(`[data-pop="${n}"]`);
           return { sound: "pop", at: revealAt(n), rate: pops.rate * 2 ** (pops.steps[i] / 12), pan: panFor(where) };

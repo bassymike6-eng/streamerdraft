@@ -26,7 +26,7 @@ The launch and marketing plan is in **[docs/LAUNCH-PLAN.md](docs/LAUNCH-PLAN.md)
 | Scouts | No applications: signing up makes you a scout. Admin can tick "Looks good" or turn one down (they're emailed, stay in the competition, can't sign up as a scout again with that email) |
 | Admin (`/admin`) | Overview and charts, People, Scouts, Leaderboard (with cheat flags), Flags, CSV export, disqualify, write and send emails to the list |
 | Emails | Confirmation, scout turn-down, launch/news emails (via Resend). Unsubscribe links on everything |
-| Sound | The intro is scored scene by scene: each scene its own sound, cut when the next one starts, the title as the peak (`scripts/render-intro.py`, files in `public/sounds/v5`). The page's own sounds: `scripts/render-sounds.py`. Hear the old intro with `?sounds=v2` |
+| Sound | **Bassify**: the intro's first sounds, polished (v1+, `scripts/make-v1plus.py`, files in `public/sounds/v1plus`), with a bassline under the whole thing (`scripts/render-bassify.py`, files in `public/sounds/bassify`). Phones get a version of the bass made for phone speakers. The page's own sounds: `scripts/render-sounds.py`. Hear the one before (Scenes) with `?sounds=v5`, or v1+ without the bass with `?sounds=v1plus` |
 | Rules (`/rules`) and Privacy (`/privacy`) | Written for UK prize promotions (CAP Code). Rules last updated 18 October 2026 |
 
 **Last end-to-end test (18 Oct):** 31 checks, all passing. A scout who joins

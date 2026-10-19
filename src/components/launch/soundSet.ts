@@ -4,21 +4,29 @@
 // Which version of the site's sound to use, and everything that's shared
 // between the intro's sounds (sound.ts) and the page's (uiSound.ts):
 //
-//   the version   v5 (the one everyone hears: "Scenes". The intro scored like
-//                     a film: every scene its own sound, made for what's on
-//                     screen, cut when the next scene comes in. One key, one
-//                     family of sounds, all from the middle; the title is the
-//                     peak. scripts/render-intro.py made public/sounds/v5/)
+//   the version   bassify (the one everyone hears: "Bassify". v1+, below,
+//                     with a bassline under the whole intro: the first thing
+//                     you hear is bass, and it lands on every big moment. A
+//                     version made for phone speakers plays on phones.
+//                     scripts/render-bassify.py made public/sounds/bassify/)
+//                 v5 ("Scenes": the one before. The intro scored like a film:
+//                     every scene its own sound, cut when the next scene
+//                     comes in. scripts/render-intro.py made public/sounds/v5/)
 //                 v2 (the intro before that: a sound for every moment, coming
 //                     from where it happens on the screen. Made by
 //                     scripts/render-sounds.py, which still makes the page's
 //                     sounds for every version)
 //                 v1 (the first version, kept exactly as it was:
 //                     scripts/render-sounds-v1.py made public/sounds/v1/)
+//                 v1plus ("v1+": v1, polished. The same sounds at the same
+//                     moments, with the levels put right (the title the
+//                     peak, then "Yet.", then the lock) and gentler left /
+//                     right movement. scripts/make-v1plus.py made
+//                     public/sounds/v1plus/)
 //                 v3 ("Lights on": made live in the browser, src/components/
 //                     sound/. Tried and set aside: kept to compare)
-//                 Add ?sounds=v2 (or v1, v3) to the address to hear another
-//                 one, to compare.
+//                 Add ?sounds=v5 (or v1plus, v2, v1, v3) to the address to
+//                 hear another one, to compare.
 //   sound on/off  the visitor's choice (the Sound button in the footer). Off
 //                 means off everywhere: the intro and the page. Remembered on
 //                 this device.
@@ -34,31 +42,41 @@
 import manifestV1 from "./sounds.v1.json";
 import manifestV2 from "./sounds.json";
 import manifestV5 from "./sounds.v5.json";
+import manifestV1plus from "./sounds.v1plus.json";
+import manifestBassify from "./sounds.bassify.json";
 
-export type SoundSet = "v1" | "v2" | "v3" | "v5";
+export type SoundSet = "bassify" | "v1" | "v1plus" | "v2" | "v3" | "v5";
+const SETS: readonly string[] = ["bassify", "v1", "v1plus", "v2", "v3", "v5"];
 
 // The version everyone hears
-export const SOUND_SET: SoundSet = "v5";
+export const SOUND_SET: SoundSet = "bassify";
 
 export function soundSet(): SoundSet {
   if (typeof window === "undefined") return SOUND_SET;
   const asked = new URLSearchParams(window.location.search).get("sounds");
-  return asked === "v1" || asked === "v2" || asked === "v3" || asked === "v5" ? asked : SOUND_SET;
+  return asked && SETS.includes(asked) ? (asked as SoundSet) : SOUND_SET;
 }
 
-// v1, v2 and v5 are files; v3 is made live
+// v3 is made live; the rest are files
 export const isLiveSet = (set: SoundSet = soundSet()) => set === "v3";
 
-// Where an intro sound's file is, for a version (v1, v2 and v5)
+// The bassline's files (Bassify): one for computers, one for phones
+export const BASS_FILES = ["bass", "bass-phone"];
+
+// Where an intro sound's file is, for a version (all but v3)
 export function soundUrl(name: string, set: SoundSet = soundSet()) {
+  if (set === "bassify") return BASS_FILES.includes(name) ? `/sounds/bassify/${name}.mp3` : `/sounds/v1plus/${name}.mp3`;
   if (set === "v1") return `/sounds/v1/${name}.mp3`;
+  if (set === "v1plus") return `/sounds/v1plus/${name}.mp3`;
   if (set === "v5") return `/sounds/v5/${name}.mp3`;
   return `/sounds/${name}.mp3`;
 }
 
 // Where each file's sound really starts (see sound.ts), for a version
 export function soundManifest(set: SoundSet = soundSet()) {
+  if (set === "bassify") return { ...manifestV1plus, ...manifestBassify };
   if (set === "v1") return manifestV1;
+  if (set === "v1plus") return manifestV1plus;
   if (set === "v5") return manifestV5;
   return manifestV2;
 }
@@ -185,3 +203,8 @@ export function releasePlaybackSession() {
   silentClip?.pause();
   setAudioSession("ambient");
 }
+
+// v1, v1+ and Bassify share v1's cue sheet (the page's pops start a fifth lower)
+export const isV1 = (set: SoundSet = soundSet()) => set === "v1" || set === "v1plus" || set === "bassify";
+// v1+ and Bassify place sounds left and right more gently than v1 (soundCues.ts, sound.ts)
+export const isGentle = (set: SoundSet = soundSet()) => set === "v1plus" || set === "bassify";
